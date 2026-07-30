@@ -48,6 +48,8 @@ pub static TEST_METRICS: &[MetricMetadata] = &[
     },
 ];
 
+// ── Test ──────────────────────────────────────────────────────────────────────
+
 #[test]
 fn integration_test() {
     let mut registry = Registry::default();
@@ -75,6 +77,8 @@ fn integration_test() {
             let mut child_scope_2 = root_scope.child(TEST_SCOPE_2, None);
             child_scope_2.metric(TEST_METRIC_2, 93, None);
         }
+
+        root_scope.metric(metrics::EVENTS, 1, None);
     }
 
     subscriber.drain();
