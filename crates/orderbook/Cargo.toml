@@ -1,0 +1,15 @@
+[package]
+name = "orderbook"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+domain.workspace = true
+thiserror = "2.0.18"
+
+[dev-dependencies]
+criterion = { version = "0.8.2" }
+
+[[bench]]
+name = "lob_l3"
+harness = false

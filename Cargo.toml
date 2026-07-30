@@ -1,0 +1,14 @@
+[workspace]
+members = ["bin/market_simulator", "crates/*"]
+resolver = "2"
+
+[workspace.dependencies]
+domain = { path = "crates/domain" }
+orderbook = { path = "crates/orderbook" }
+telemetry = { path = "crates/telemetry" }
+
+[profile.release]
+codegen-units = 1
+lto = "fat"
+# panic = "abort"
+# alternative allocator
