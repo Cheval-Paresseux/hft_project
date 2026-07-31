@@ -1,6 +1,35 @@
-use super::fields::{OrderId, Quantity, Timestamp};
+use super::fields::{OrderId, OrderSide, Price, Quantity, Timestamp};
 
-use crate::errors::OrderError;
+use crate::errors::OrderBookError;
+
+// ── Limit Order ───────────────────────────────────────────────────────────────
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct LimitOrder {
+    pub id: OrderId,
+    pub timestamp: Timestamp,
+    pub quantity: Quantity,
+    pub side: OrderSide,
+    pub price: Price,
+}
+
+impl LimitOrder {
+    pub fn new(
+        id: OrderId,
+        timestamp: Timestamp,
+        quantity: Quantity,
+        side: OrderSide,
+        price: Price,
+    ) -> Self {
+        Self {
+            id,
+            timestamp,
+            quantity,
+            side,
+            price,
+        }
+    }
+}
 
 // ── Resting Order ─────────────────────────────────────────────────────────────
 
@@ -20,9 +49,9 @@ impl RestingOrder {
         }
     }
 
-    pub fn fill(&mut self, fill_quantity: Quantity) -> Result<(), OrderError> {
+    pub fn fill(&mut self, fill_quantity: Quantity) -> Result<(), OrderBookError> {
         if self.quantity < fill_quantity {
-            return Err(OrderError::FillExceedsQuantity {
+            return Err(OrderBookError::FillExceedsOrderQuantity {
                 order_id: self.id,
                 order_quantity: self.quantity,
                 fill_quantity,
@@ -45,8 +74,10 @@ mod tests {
 
     #[test]
     fn inspect_order_size() {
+        println!("Limit Order: {} bytes", std::mem::size_of::<LimitOrder>());
+
         println!(
-            "RestingOrder: {} bytes",
+            "Resting Order: {} bytes",
             std::mem::size_of::<RestingOrder>()
         );
     }

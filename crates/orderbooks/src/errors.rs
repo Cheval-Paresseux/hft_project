@@ -5,9 +5,9 @@ use thiserror::Error;
 // ── Order Error ───────────────────────────────────────────────────────────────
 
 #[derive(Error, Debug, PartialEq, Eq)]
-pub enum OrderError {
+pub enum OrderBookError {
     #[error("fill quantity {fill_quantity:?} must be less than current {order_quantity:?} for filling on order {order_id:?}")]
-    FillExceedsQuantity {
+    FillExceedsOrderQuantity {
         order_id: OrderId,
         order_quantity: Quantity,
         fill_quantity: Quantity,
