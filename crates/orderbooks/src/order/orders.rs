@@ -1,5 +1,6 @@
-use crate::order::errors::OrderError;
-use crate::order::fields::{OrderId, Quantity, Timestamp};
+use super::fields::{OrderId, Quantity, Timestamp};
+
+use crate::errors::OrderError;
 
 // ── Resting Order ─────────────────────────────────────────────────────────────
 
@@ -51,5 +52,25 @@ mod tests {
     }
 
     #[test]
-    fn fill() {}
+    fn fill() {
+        let mut order = RestingOrder::new(OrderId::new(0), Timestamp::new(0), Quantity::new(10));
+
+        let fill_quantity: Quantity = 5.into();
+
+        let result = order.fill(fill_quantity);
+
+        assert!(result.is_ok());
+        assert_eq!(order.quantity, Quantity::new(5));
+    }
+
+    #[test]
+    fn fill_exceeds() {
+        let mut order = RestingOrder::new(OrderId::new(0), Timestamp::new(0), Quantity::new(10));
+
+        let fill_quantity: Quantity = 15.into();
+
+        let result = order.fill(fill_quantity);
+
+        assert!(result.is_err());
+    }
 }

@@ -1,4 +1,5 @@
-use super::fields::{OrderId, Quantity};
+use crate::order::fields::{OrderId, Quantity};
+
 use thiserror::Error;
 
 // ── Order Error ───────────────────────────────────────────────────────────────
