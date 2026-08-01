@@ -1,5 +1,21 @@
-mod book;
-mod level;
-mod side;
+use crate::order::fields::{OrderId, Price, Quantity};
 
-pub use self::{book::OrderBookError, level::LevelError, side::SideError};
+use thiserror::Error;
+
+// ── Order Error ───────────────────────────────────────────────────────────────
+
+#[derive(Error, Debug, PartialEq, Eq)]
+pub enum OrderBookError {
+    #[error("fill quantity {fill_quantity:?} must be less than current {order_quantity:?} for filling on order {order_id:?}")]
+    FillExceedsOrderQuantity {
+        order_id: OrderId,
+        order_quantity: Quantity,
+        fill_quantity: Quantity,
+    },
+
+    #[error("")]
+    OrderIdNotFound { order_id: OrderId },
+
+    #[error("price level {price:?} is not in the book right now")]
+    PriceLevelNotFound { price: Price },
+}

@@ -1,8 +1,0 @@
-[package]
-name = "domain"
-version = "0.1.0"
-edition = "2024"
-
-[dependencies]
-arrayvec = "0.7.6"
-thiserror = "2.0.18"
