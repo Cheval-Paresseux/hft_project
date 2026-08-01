@@ -1,9 +1,3 @@
-use domain::{
-    asset::AssetId,
-    order::{LimitOrder, OrderId, OrderSide, Price, Quantity, Timestamp},
-};
-use orderbook::lob::l3::{Book, BookConfig, SideConfig};
-
 use telemetry::tracing::{
     capture::Scope,
     enrichment::Registry,
@@ -40,16 +34,6 @@ async fn main() {
 
     {
         let _ = scope.child(scopes::SHUTDOWN, None);
-
-        let mut book = set_up_boook();
-        let order = LimitOrder::new(
-            OrderId::new(0),
-            Timestamp::new(0),
-            Quantity::new(10),
-            OrderSide::Bid,
-            Price::new(100),
-        );
-        book.add_order(order);
     }
 
     // ---
@@ -66,23 +50,4 @@ async fn main() {
 pub fn create_file_sink() -> FileWriter {
     let path = "/home/mathis/Documents/code/hft/bin/market_simulator/src/test.txt";
     FileWriter::existing(path).expect("failed")
-}
-
-// ── Orderbook utilities ──────────────────────────────────────────────────────
-
-fn set_up_boook() -> Book {
-    // 1. Configure preallocation capacities
-    const LOOKUP_CAPACITY: usize = 10_000;
-    const SIDE_CAPACITY: usize = 1_000;
-    const LEVEL_CAPACITY: usize = 100;
-
-    let book_config = BookConfig::new(LOOKUP_CAPACITY, SIDE_CAPACITY, SIDE_CAPACITY);
-
-    let bid_side_config = SideConfig::new(LEVEL_CAPACITY);
-    let ask_side_config = SideConfig::new(LEVEL_CAPACITY);
-
-    // 2. Create the order book
-    let asset_id = AssetId::new(0);
-
-    Book::new(asset_id, book_config, bid_side_config, ask_side_config)
 }
