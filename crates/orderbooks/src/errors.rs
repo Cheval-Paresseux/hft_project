@@ -1,4 +1,4 @@
-use crate::order::fields::{OrderId, Quantity};
+use crate::order::fields::{OrderId, Price, Quantity};
 
 use thiserror::Error;
 
@@ -12,4 +12,10 @@ pub enum OrderBookError {
         order_quantity: Quantity,
         fill_quantity: Quantity,
     },
+
+    #[error("")]
+    OrderIdNotFound { order_id: OrderId },
+
+    #[error("price level {price:?} is not in the book right now")]
+    PriceLevelNotFound { price: Price },
 }

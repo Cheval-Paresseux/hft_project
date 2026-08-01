@@ -64,6 +64,17 @@ impl RestingOrder {
     }
 }
 
+impl From<LimitOrder> for RestingOrder {
+    #[inline]
+    fn from(order: LimitOrder) -> Self {
+        Self {
+            id: order.id,
+            timestamp: order.timestamp,
+            quantity: order.quantity,
+        }
+    }
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 //  Unit Tests
 // ═══════════════════════════════════════════════════════════════════════════════
