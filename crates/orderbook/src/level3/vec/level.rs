@@ -86,4 +86,28 @@ mod tests {
 
         assert!(level.orders[0].id == 0.into());
     }
+
+    #[test]
+    fn cancel_order() {
+        let mut level = make_level();
+        let limit_order = make_limit(0, 0, 10);
+
+        level.add_order(limit_order);
+        let result = level.cancel_order(0.into());
+
+        assert_eq!(result, Ok(()));
+        assert!(level.is_empty());
+    }
+
+    #[test]
+    fn modify_order() {
+        let mut level = make_level();
+        let limit_order = make_limit(0, 0, 10);
+
+        level.add_order(limit_order);
+        let result = level.modify_order(0.into(), 23.into());
+
+        assert_eq!(result, Ok(()));
+        assert!(level.orders[0].quantity == 23.into());
+    }
 }
