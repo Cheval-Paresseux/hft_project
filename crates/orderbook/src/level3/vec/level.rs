@@ -63,51 +63,50 @@ mod tests {
     use super::*;
     use crate::order::OrderSide;
 
-    fn make_limit(id: u64, timestamp: u64, quantity: u64) -> LimitOrder {
-        LimitOrder::new(
-            id.into(),
-            timestamp.into(),
-            quantity.into(),
-            OrderSide::Ask,
-            100.into(),
-        )
-    }
-
-    fn make_level() -> VecL3BookLevel {
-        VecL3BookLevel::new(100.into())
+    fn make_limit(id: u64, quantity: u64) -> LimitOrder {
+        LimitOrder::new(id.into(), 0.into(), quantity.into(), OrderSide::Ask, 100.into())
     }
 
     #[test]
     fn add_order() {
-        let mut level = make_level();
-        let limit_order = make_limit(0, 0, 10);
+        let mut level = VecL3BookLevel::new(100.into());
 
-        level.add_order(limit_order);
+        level.add_order(make_limit(1, 10));
 
-        assert!(level.orders[0].id == 0.into());
+        assert_eq!(level.orders.len(), 1);
+        assert_eq!(level.orders[0].id, 1.into());
+        assert_eq!(level.orders[0].quantity, 10.into());
     }
 
     #[test]
     fn cancel_order() {
-        let mut level = make_level();
-        let limit_order = make_limit(0, 0, 10);
+        let mut level = VecL3BookLevel::new(100.into());
+        level.add_order(make_limit(1, 10));
 
-        level.add_order(limit_order);
-        let result = level.cancel_order(0.into());
-
-        assert_eq!(result, Ok(()));
+        assert_eq!(level.cancel_order(1.into()), Ok(()));
         assert!(level.is_empty());
     }
 
     #[test]
     fn modify_order() {
-        let mut level = make_level();
-        let limit_order = make_limit(0, 0, 10);
+        let mut level = VecL3BookLevel::new(100.into());
+        level.add_order(make_limit(1, 10));
 
-        level.add_order(limit_order);
-        let result = level.modify_order(0.into(), 23.into());
+        assert_eq!(level.modify_order(1.into(), 23.into()), Ok(()));
+        assert_eq!(level.orders[0].quantity, 23.into());
+    }
 
-        assert_eq!(result, Ok(()));
-        assert!(level.orders[0].quantity == 23.into());
+    #[test]
+    fn unknown_order_errors() {
+        let mut level = VecL3BookLevel::new(100.into());
+
+        assert_eq!(
+            level.cancel_order(42.into()),
+            Err(OrderBookError::OrderIdNotFound { order_id: 42.into() })
+        );
+        assert_eq!(
+            level.modify_order(42.into(), 5.into()),
+            Err(OrderBookError::OrderIdNotFound { order_id: 42.into() })
+        );
     }
 }

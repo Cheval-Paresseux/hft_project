@@ -94,62 +94,54 @@ impl L3OrderBook for VecL3OrderBook {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::order::OrderSide;
 
-    fn make_limit(
-        id: u64,
-        timestamp: u64,
-        quantity: u64,
-        side: OrderSide,
-        price: u64,
-    ) -> LimitOrder {
-        LimitOrder::new(
-            id.into(),
-            timestamp.into(),
-            quantity.into(),
-            side,
-            price.into(),
-        )
-    }
-
-    fn make_book() -> VecL3OrderBook {
-        VecL3OrderBook::default()
+    fn make_limit(id: u64, quantity: u64, side: OrderSide, price: u64) -> LimitOrder {
+        LimitOrder::new(id.into(), 0.into(), quantity.into(), side, price.into())
     }
 
     #[test]
     fn add_order() {
-        let mut book = make_book();
-        let limit_order = make_limit(0, 0, 10, OrderSide::Bid, 100);
+        let mut book = VecL3OrderBook::default();
 
-        book.add_order(limit_order);
+        book.add_order(make_limit(1, 10, OrderSide::Bid, 100));
+        book.add_order(make_limit(2, 10, OrderSide::Ask, 200));
 
+        assert_eq!(book.orders_map[&1.into()], (OrderSide::Bid, 100.into()));
+        assert_eq!(book.orders_map[&2.into()], (OrderSide::Ask, 200.into()));
         assert!(!book.bid_side.is_empty());
-        assert!(book.find_order(0.into()).is_ok());
+        assert!(!book.ask_side.is_empty());
     }
 
     #[test]
     fn cancel_order() {
-        let mut book = make_book();
-        let limit_order = make_limit(0, 0, 10, OrderSide::Bid, 100);
+        let mut book = VecL3OrderBook::default();
+        book.add_order(make_limit(1, 10, OrderSide::Bid, 100));
 
-        book.add_order(limit_order);
-        let result = book.cancel_order(0.into());
-
-        assert!(result.is_ok());
+        assert_eq!(book.cancel_order(1.into()), Ok(()));
         assert!(book.bid_side.is_empty());
-        assert!(book.find_order(0.into()).is_err());
+        assert!(book.orders_map.is_empty());
     }
 
     #[test]
     fn modify_order() {
-        let mut book = make_book();
-        let limit_order = make_limit(0, 0, 10, OrderSide::Bid, 100);
+        let mut book = VecL3OrderBook::default();
+        book.add_order(make_limit(1, 10, OrderSide::Bid, 100));
 
-        book.add_order(limit_order);
-        let result = book.modify_order(0.into(), 23.into());
+        assert_eq!(book.modify_order(1.into(), 23.into()), Ok(()));
+        assert!(book.find_order(1.into()).is_ok());
+    }
 
-        assert!(result.is_ok());
-        assert!(!book.bid_side.is_empty());
-        assert!(book.find_order(0.into()).is_ok());
+    #[test]
+    fn unknown_order_errors() {
+        let mut book = VecL3OrderBook::default();
+
+        assert_eq!(
+            book.cancel_order(42.into()),
+            Err(OrderBookError::OrderIdNotFound { order_id: 42.into() })
+        );
+        assert_eq!(
+            book.modify_order(42.into(), 5.into()),
+            Err(OrderBookError::OrderIdNotFound { order_id: 42.into() })
+        );
     }
 }
