@@ -70,8 +70,13 @@ impl L3OrderBook for VecL3OrderBook {
         }
     }
 
-    fn fill(&mut self, _order_id: OrderId, _quantity: Quantity) -> Result<(), OrderBookError> {
-        todo!()
+    fn fill(&mut self, order_id: OrderId, fill_quantity: Quantity) -> Result<(), OrderBookError> {
+        let &(side, price) = self.find_order(order_id)?;
+
+        match side {
+            OrderSide::Bid => self.bid_side.fill_order(order_id, price, fill_quantity),
+            OrderSide::Ask => self.ask_side.fill_order(order_id, price, fill_quantity),
+        }
     }
 
     fn best(&self, _side: OrderSide) -> Option<(OrderId, Price, Quantity)> {
@@ -137,11 +142,15 @@ mod tests {
 
         assert_eq!(
             book.cancel_order(42.into()),
-            Err(OrderBookError::OrderIdNotFound { order_id: 42.into() })
+            Err(OrderBookError::OrderIdNotFound {
+                order_id: 42.into()
+            })
         );
         assert_eq!(
             book.modify_order(42.into(), 5.into()),
-            Err(OrderBookError::OrderIdNotFound { order_id: 42.into() })
+            Err(OrderBookError::OrderIdNotFound {
+                order_id: 42.into()
+            })
         );
     }
 }

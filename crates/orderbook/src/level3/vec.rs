@@ -1,3 +1,5 @@
 pub mod book;
-pub mod level;
-pub mod side;
+mod level;
+mod side;
+
+pub use book::VecL3OrderBook;

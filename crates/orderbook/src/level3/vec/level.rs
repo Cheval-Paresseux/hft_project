@@ -7,6 +7,7 @@ use crate::{
 
 pub struct VecL3BookLevel {
     pub price: Price,
+    pub total_quantity: Quantity,
     orders: Vec<RestingOrder>,
 }
 
@@ -14,6 +15,7 @@ impl VecL3BookLevel {
     pub fn new(price: Price) -> Self {
         Self {
             price,
+            total_quantity: 0.into(),
             orders: Vec::new(),
         }
     }
@@ -33,10 +35,12 @@ impl VecL3BookLevel {
 
     pub fn add_order(&mut self, order: LimitOrder) {
         self.orders.push(order.into());
+        self.total_quantity += order.quantity;
     }
 
     pub fn cancel_order(&mut self, order_id: OrderId) -> Result<(), OrderBookError> {
         let position = self.find_position(order_id)?;
+        self.total_quantity -= self.orders[position].quantity;
         self.orders.remove(position);
 
         Ok(())
@@ -48,7 +52,27 @@ impl VecL3BookLevel {
         new_quantity: Quantity,
     ) -> Result<(), OrderBookError> {
         let position = self.find_position(order_id)?;
+        let old_quantity = self.orders[position].quantity;
+        let delta = Quantity::new(new_quantity.get().abs_diff(old_quantity.get()));
+
+        if new_quantity >= old_quantity {
+            self.total_quantity += delta;
+        } else {
+            self.total_quantity -= delta;
+        }
+
         self.orders[position].quantity = new_quantity;
+
+        Ok(())
+    }
+
+    pub fn fill_order(
+        &mut self,
+        order_id: OrderId,
+        fill_quantity: Quantity,
+    ) -> Result<(), OrderBookError> {
+        let position = self.find_position(order_id)?;
+        self.orders[position].fill(fill_quantity)?;
 
         Ok(())
     }
@@ -64,7 +88,13 @@ mod tests {
     use crate::order::OrderSide;
 
     fn make_limit(id: u64, quantity: u64) -> LimitOrder {
-        LimitOrder::new(id.into(), 0.into(), quantity.into(), OrderSide::Ask, 100.into())
+        LimitOrder::new(
+            id.into(),
+            0.into(),
+            quantity.into(),
+            OrderSide::Ask,
+            100.into(),
+        )
     }
 
     #[test]
@@ -102,11 +132,15 @@ mod tests {
 
         assert_eq!(
             level.cancel_order(42.into()),
-            Err(OrderBookError::OrderIdNotFound { order_id: 42.into() })
+            Err(OrderBookError::OrderIdNotFound {
+                order_id: 42.into()
+            })
         );
         assert_eq!(
             level.modify_order(42.into(), 5.into()),
-            Err(OrderBookError::OrderIdNotFound { order_id: 42.into() })
+            Err(OrderBookError::OrderIdNotFound {
+                order_id: 42.into()
+            })
         );
     }
 }

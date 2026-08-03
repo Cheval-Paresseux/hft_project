@@ -86,6 +86,17 @@ impl VecL3BookSide {
 
         self.levels[position].modify_order(order_id, new_quantity)
     }
+
+    pub fn fill_order(
+        &mut self,
+        order_id: OrderId,
+        order_price: Price,
+        fill_quantity: Quantity,
+    ) -> Result<(), OrderBookError> {
+        let position = self.find_level(order_price)?;
+
+        self.levels[position].fill_order(order_id, fill_quantity)
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -154,13 +165,18 @@ mod tests {
         );
 
         side.add_order(make_limit(1, OrderSide::Ask, 100));
+
         assert_eq!(
             side.cancel_order(42.into(), 100.into()),
-            Err(OrderBookError::OrderIdNotFound { order_id: 42.into() })
+            Err(OrderBookError::OrderIdNotFound {
+                order_id: 42.into()
+            })
         );
         assert_eq!(
             side.modify_order(42.into(), 100.into(), 5.into()),
-            Err(OrderBookError::OrderIdNotFound { order_id: 42.into() })
+            Err(OrderBookError::OrderIdNotFound {
+                order_id: 42.into()
+            })
         );
     }
 }

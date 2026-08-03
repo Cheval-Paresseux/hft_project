@@ -14,7 +14,7 @@ pub trait L3OrderBook {
         new_quantity: Quantity,
     ) -> Result<(), OrderBookError>;
 
-    fn fill(&mut self, order_id: OrderId, quantity: Quantity) -> Result<(), OrderBookError>;
+    fn fill(&mut self, order_id: OrderId, fill_quantity: Quantity) -> Result<(), OrderBookError>;
     fn best(&self, side: OrderSide) -> Option<(OrderId, Price, Quantity)>;
 
     fn best_price(&self, side: OrderSide) -> Option<Price>;
