@@ -78,6 +78,7 @@ impl VecL3BookLevel {
     ) -> Result<(), OrderBookError> {
         let position = self.find_position(order_id)?;
         self.orders[position].fill(fill_quantity)?;
+        self.total_quantity -= fill_quantity;
 
         Ok(())
     }
@@ -111,6 +112,7 @@ mod tests {
         assert_eq!(level.orders.len(), 1);
         assert_eq!(level.orders[0].id, 1.into());
         assert_eq!(level.orders[0].quantity, 10.into());
+        assert_eq!(level.total_quantity, 10.into());
     }
 
     #[test]
@@ -120,6 +122,7 @@ mod tests {
 
         assert_eq!(level.cancel_order(1.into()), Ok(()));
         assert!(level.is_empty());
+        assert_eq!(level.total_quantity, 0.into());
     }
 
     #[test]
@@ -129,6 +132,43 @@ mod tests {
 
         assert_eq!(level.modify_order(1.into(), 23.into()), Ok(()));
         assert_eq!(level.orders[0].quantity, 23.into());
+        assert_eq!(level.total_quantity, 23.into());
+    }
+
+    #[test]
+    fn best() {
+        let mut level = VecL3BookLevel::new(100.into());
+
+        assert_eq!(level.best(), None);
+
+        level.add_order(make_limit(1, 10));
+        level.add_order(make_limit(2, 20));
+
+        assert_eq!(level.best(), Some((1.into(), 10.into())));
+    }
+
+    #[test]
+    fn fill_order() {
+        let mut level = VecL3BookLevel::new(100.into());
+        level.add_order(make_limit(1, 10));
+
+        assert_eq!(level.fill_order(1.into(), 4.into()), Ok(()));
+        assert_eq!(level.orders[0].quantity, 6.into());
+        assert_eq!(level.total_quantity, 6.into());
+
+        assert_eq!(
+            level.fill_order(1.into(), 7.into()),
+            Err(OrderBookError::FillExceedsOrderQuantity {
+                order_id: 1.into(),
+                order_quantity: 6.into(),
+                fill_quantity: 7.into(),
+            })
+        );
+
+        assert_eq!(
+            level.fill_order(42.into(), 1.into()),
+            Err(OrderBookError::OrderIdNotFound { order_id: 42.into() })
+        );
     }
 
     #[test]

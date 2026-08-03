@@ -164,6 +164,50 @@ mod tests {
     }
 
     #[test]
+    fn best_and_best_price() {
+        let mut asks = VecL3BookSide::new(OrderSide::Ask);
+        let mut bids = VecL3BookSide::new(OrderSide::Bid);
+
+        asks.add_order(make_limit(1, OrderSide::Ask, 100));
+        asks.add_order(make_limit(2, OrderSide::Ask, 105));
+        bids.add_order(make_limit(3, OrderSide::Bid, 100));
+        bids.add_order(make_limit(4, OrderSide::Bid, 95));
+
+        assert_eq!(asks.best(), Some((1.into(), 100.into(), 1.into())));
+        assert_eq!(asks.best_price(), Some(100.into()));
+        assert_eq!(bids.best(), Some((3.into(), 100.into(), 1.into())));
+        assert_eq!(bids.best_price(), Some(100.into()));
+
+        assert_eq!(VecL3BookSide::new(OrderSide::Ask).best(), None);
+        assert_eq!(VecL3BookSide::new(OrderSide::Ask).best_price(), None);
+    }
+
+    #[test]
+    fn quantity_at() {
+        let mut side = VecL3BookSide::new(OrderSide::Ask);
+
+        side.add_order(make_limit(1, OrderSide::Ask, 100));
+        side.add_order(make_limit(2, OrderSide::Ask, 100));
+
+        assert_eq!(side.quantity_at(100.into()), 2.into());
+        assert_eq!(side.quantity_at(99.into()), 0.into());
+    }
+
+    #[test]
+    fn fill_order() {
+        let mut side = VecL3BookSide::new(OrderSide::Ask);
+        side.add_order(make_limit(1, OrderSide::Ask, 100));
+
+        assert_eq!(side.fill_order(1.into(), 100.into(), 1.into()), Ok(()));
+        assert_eq!(side.quantity_at(100.into()), 0.into());
+
+        assert_eq!(
+            side.fill_order(42.into(), 100.into(), 1.into()),
+            Err(OrderBookError::OrderIdNotFound { order_id: 42.into() })
+        );
+    }
+
+    #[test]
     fn missing_level_or_order_errors() {
         let mut side = VecL3BookSide::new(OrderSide::Ask);
 

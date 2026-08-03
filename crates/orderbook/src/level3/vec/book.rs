@@ -143,6 +143,46 @@ mod tests {
     }
 
     #[test]
+    fn best_and_best_price() {
+        let mut book = VecL3OrderBook::default();
+
+        book.add_order(make_limit(1, 10, OrderSide::Bid, 100));
+        book.add_order(make_limit(2, 10, OrderSide::Bid, 105));
+        book.add_order(make_limit(3, 10, OrderSide::Ask, 200));
+        book.add_order(make_limit(4, 10, OrderSide::Ask, 195));
+
+        assert_eq!(book.best(OrderSide::Bid), Some((2.into(), 105.into(), 10.into())));
+        assert_eq!(book.best_price(OrderSide::Bid), Some(105.into()));
+        assert_eq!(book.best(OrderSide::Ask), Some((4.into(), 195.into(), 10.into())));
+        assert_eq!(book.best_price(OrderSide::Ask), Some(195.into()));
+    }
+
+    #[test]
+    fn quantity_at() {
+        let mut book = VecL3OrderBook::default();
+
+        book.add_order(make_limit(1, 10, OrderSide::Bid, 100));
+        book.add_order(make_limit(2, 5, OrderSide::Bid, 100));
+
+        assert_eq!(book.quantity_at(OrderSide::Bid, 100.into()), 15.into());
+        assert_eq!(book.quantity_at(OrderSide::Ask, 100.into()), 0.into());
+    }
+
+    #[test]
+    fn fill() {
+        let mut book = VecL3OrderBook::default();
+        book.add_order(make_limit(1, 10, OrderSide::Bid, 100));
+
+        assert_eq!(book.fill(1.into(), 4.into()), Ok(()));
+        assert_eq!(book.quantity_at(OrderSide::Bid, 100.into()), 6.into());
+
+        assert_eq!(
+            book.fill(42.into(), 1.into()),
+            Err(OrderBookError::OrderIdNotFound { order_id: 42.into() })
+        );
+    }
+
+    #[test]
     fn unknown_order_errors() {
         let mut book = VecL3OrderBook::default();
 
