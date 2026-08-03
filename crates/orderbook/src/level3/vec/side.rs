@@ -20,8 +20,20 @@ impl VecL3BookSide {
         }
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.levels.is_empty()
+    pub fn best(&self) -> Option<(OrderId, Price, Quantity)> {
+        let (order_id, quantity) = self.levels.first()?.best()?;
+        Some((order_id, self.levels[0].price, quantity))
+    }
+
+    pub fn best_price(&self) -> Option<Price> {
+        Some(self.levels.first()?.price)
+    }
+
+    pub fn quantity_at(&self, price: Price) -> Quantity {
+        match self.find_level(price) {
+            Ok(position) => self.levels[position].total_quantity,
+            Err(_) => 0.into(),
+        }
     }
 }
 
@@ -148,7 +160,7 @@ mod tests {
         assert_eq!(side.levels.len(), 1);
 
         assert_eq!(side.cancel_order(2.into(), 100.into()), Ok(()));
-        assert!(side.is_empty());
+        assert!(side.levels.is_empty());
     }
 
     #[test]

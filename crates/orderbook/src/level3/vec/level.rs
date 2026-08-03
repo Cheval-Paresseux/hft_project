@@ -23,6 +23,11 @@ impl VecL3BookLevel {
     pub fn is_empty(&self) -> bool {
         self.orders.is_empty()
     }
+
+    pub fn best(&self) -> Option<(OrderId, Quantity)> {
+        let first = self.orders.first()?;
+        Some((first.id, first.quantity))
+    }
 }
 
 impl VecL3BookLevel {

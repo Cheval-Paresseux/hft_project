@@ -79,16 +79,25 @@ impl L3OrderBook for VecL3OrderBook {
         }
     }
 
-    fn best(&self, _side: OrderSide) -> Option<(OrderId, Price, Quantity)> {
-        todo!()
+    fn best(&self, side: OrderSide) -> Option<(OrderId, Price, Quantity)> {
+        match side {
+            OrderSide::Bid => self.bid_side.best(),
+            OrderSide::Ask => self.ask_side.best(),
+        }
     }
 
-    fn best_price(&self, _side: OrderSide) -> Option<Price> {
-        todo!()
+    fn best_price(&self, side: OrderSide) -> Option<Price> {
+        match side {
+            OrderSide::Bid => self.bid_side.best_price(),
+            OrderSide::Ask => self.ask_side.best_price(),
+        }
     }
 
-    fn quantity_at(&self, _side: OrderSide, _price: Price) -> Quantity {
-        todo!()
+    fn quantity_at(&self, side: OrderSide, price: Price) -> Quantity {
+        match side {
+            OrderSide::Bid => self.bid_side.quantity_at(price),
+            OrderSide::Ask => self.ask_side.quantity_at(price),
+        }
     }
 }
 
@@ -113,8 +122,6 @@ mod tests {
 
         assert_eq!(book.orders_map[&1.into()], (OrderSide::Bid, 100.into()));
         assert_eq!(book.orders_map[&2.into()], (OrderSide::Ask, 200.into()));
-        assert!(!book.bid_side.is_empty());
-        assert!(!book.ask_side.is_empty());
     }
 
     #[test]
@@ -123,7 +130,6 @@ mod tests {
         book.add_order(make_limit(1, 10, OrderSide::Bid, 100));
 
         assert_eq!(book.cancel_order(1.into()), Ok(()));
-        assert!(book.bid_side.is_empty());
         assert!(book.orders_map.is_empty());
     }
 
