@@ -11,6 +11,7 @@ use telemetry::{
 
 // ── Main ─────────────────────────────────────────────────────────────────────
 
+
 #[tokio::main]
 async fn main() {
     let registry = Registry::default();
