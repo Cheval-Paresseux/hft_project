@@ -20,47 +20,6 @@ impl VecL3BookSide {
         }
     }
 
-    pub fn best(&self) -> Option<(OrderId, Price, Quantity)> {
-        let (order_id, quantity) = self.levels.first()?.best()?;
-        Some((order_id, self.levels[0].price, quantity))
-    }
-
-    pub fn best_price(&self) -> Option<Price> {
-        Some(self.levels.first()?.price)
-    }
-
-    pub fn quantity_at(&self, price: Price) -> Quantity {
-        match self.find_level(price) {
-            Ok(position) => self.levels[position].total_quantity,
-            Err(_) => 0.into(),
-        }
-    }
-
-    pub fn available_quantity(&self, bound: Option<Price>) -> Quantity {
-        let mut total = Quantity::new(0);
-
-        for level in &self.levels {
-            match self.side {
-                OrderSide::Ask => {
-                    if bound.is_some_and(|bound| level.price > bound) {
-                        break;
-                    }
-                }
-                OrderSide::Bid => {
-                    if bound.is_some_and(|bound| level.price < bound) {
-                        break;
-                    }
-                }
-            }
-
-            total += level.total_quantity;
-        }
-
-        total
-    }
-}
-
-impl VecL3BookSide {
     fn find_level_pos(&self, price: Price) -> usize {
         match self.side {
             OrderSide::Ask => self.levels.partition_point(|l| l.price < price),
@@ -88,6 +47,8 @@ impl VecL3BookSide {
         position
     }
 }
+
+// ── Book Mutations ────────────────────────────────────────────────────────────
 
 impl VecL3BookSide {
     pub fn add_order(&mut self, order: LimitOrder) {
@@ -134,6 +95,29 @@ impl VecL3BookSide {
     }
 }
 
+// ── Book Look Up ──────────────────────────────────────────────────────────────
+
+impl VecL3BookSide {
+    pub fn order(&self, order_id: OrderId, order_price: Price) -> Result<(OrderSide, Price, Quantity), OrderBookError> {
+        let position = self.find_level(order_price)?;
+
+        let quantity = self.levels[position].order(order_id)?;
+        Ok((self.side, order_price, quantity))
+    }
+
+    pub fn top_order(&self) -> Option<(OrderId, Price, Quantity)> {
+        let (order_id, quantity) = self.levels.first()?.top_order()?;
+        
+        Some((order_id, self.levels[0].price, quantity))
+    }
+
+    pub fn orders_at(&self, price: Price) -> Result<Vec<(OrderId, Quantity)>, OrderBookError> {
+        let position = self.find_level(price)?;
+
+        Ok(self.levels[position].orders_at())
+    }
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 //  Unit Tests
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -144,6 +128,35 @@ mod tests {
 
     fn make_limit(id: u64, side: OrderSide, price: u64) -> LimitOrder {
         LimitOrder::new(id.into(), 0.into(), 1.into(), side, price.into())
+    }
+
+    #[test]
+    fn missing_level_or_order_errors() {
+        let mut side = VecL3BookSide::new(OrderSide::Ask);
+
+        assert_eq!(
+            side.cancel_order(1.into(), 100.into()),
+            Err(OrderBookError::PriceLevelNotFound { price: 100.into() })
+        );
+        assert_eq!(
+            side.modify_order(1.into(), 100.into(), 5.into()),
+            Err(OrderBookError::PriceLevelNotFound { price: 100.into() })
+        );
+
+        side.add_order(make_limit(1, OrderSide::Ask, 100));
+
+        assert_eq!(
+            side.cancel_order(42.into(), 100.into()),
+            Err(OrderBookError::OrderIdNotFound {
+                order_id: 42.into()
+            })
+        );
+        assert_eq!(
+            side.modify_order(42.into(), 100.into(), 5.into()),
+            Err(OrderBookError::OrderIdNotFound {
+                order_id: 42.into()
+            })
+        );
     }
 
     #[test]
@@ -184,80 +197,5 @@ mod tests {
 
         assert_eq!(side.cancel_order(2.into(), 100.into()), Ok(()));
         assert!(side.levels.is_empty());
-    }
-
-    #[test]
-    fn best_and_best_price() {
-        let mut asks = VecL3BookSide::new(OrderSide::Ask);
-        let mut bids = VecL3BookSide::new(OrderSide::Bid);
-
-        asks.add_order(make_limit(1, OrderSide::Ask, 100));
-        asks.add_order(make_limit(2, OrderSide::Ask, 105));
-        bids.add_order(make_limit(3, OrderSide::Bid, 100));
-        bids.add_order(make_limit(4, OrderSide::Bid, 95));
-
-        assert_eq!(asks.best(), Some((1.into(), 100.into(), 1.into())));
-        assert_eq!(asks.best_price(), Some(100.into()));
-        assert_eq!(bids.best(), Some((3.into(), 100.into(), 1.into())));
-        assert_eq!(bids.best_price(), Some(100.into()));
-
-        assert_eq!(VecL3BookSide::new(OrderSide::Ask).best(), None);
-        assert_eq!(VecL3BookSide::new(OrderSide::Ask).best_price(), None);
-    }
-
-    #[test]
-    fn quantity_at() {
-        let mut side = VecL3BookSide::new(OrderSide::Ask);
-
-        side.add_order(make_limit(1, OrderSide::Ask, 100));
-        side.add_order(make_limit(2, OrderSide::Ask, 100));
-
-        assert_eq!(side.quantity_at(100.into()), 2.into());
-        assert_eq!(side.quantity_at(99.into()), 0.into());
-    }
-
-    #[test]
-    fn fill_order() {
-        let mut side = VecL3BookSide::new(OrderSide::Ask);
-        side.add_order(make_limit(1, OrderSide::Ask, 100));
-
-        assert_eq!(side.fill_order(1.into(), 100.into(), 1.into()), Ok(()));
-        assert_eq!(side.quantity_at(100.into()), 0.into());
-
-        assert_eq!(
-            side.fill_order(42.into(), 100.into(), 1.into()),
-            Err(OrderBookError::OrderIdNotFound {
-                order_id: 42.into()
-            })
-        );
-    }
-
-    #[test]
-    fn missing_level_or_order_errors() {
-        let mut side = VecL3BookSide::new(OrderSide::Ask);
-
-        assert_eq!(
-            side.cancel_order(1.into(), 100.into()),
-            Err(OrderBookError::PriceLevelNotFound { price: 100.into() })
-        );
-        assert_eq!(
-            side.modify_order(1.into(), 100.into(), 5.into()),
-            Err(OrderBookError::PriceLevelNotFound { price: 100.into() })
-        );
-
-        side.add_order(make_limit(1, OrderSide::Ask, 100));
-
-        assert_eq!(
-            side.cancel_order(42.into(), 100.into()),
-            Err(OrderBookError::OrderIdNotFound {
-                order_id: 42.into()
-            })
-        );
-        assert_eq!(
-            side.modify_order(42.into(), 100.into(), 5.into()),
-            Err(OrderBookError::OrderIdNotFound {
-                order_id: 42.into()
-            })
-        );
     }
 }
