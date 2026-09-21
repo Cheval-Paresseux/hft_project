@@ -1,10 +1,10 @@
 # Orderbook
 
-A collection of **Level 3 (L3)** and **Level 2 (L2)** order book structures, exposed through a common interface.
+A collection of **Level 3 (L3)** order book structures — with **Level 2 (L2)** planned — each level exposed behind its own trait.
 
 The crate separates **what an order book does** from **how it is implemented**:
 
-- Stable `L3OrderBook` and `L2OrderBook` traits define the operations supported by each level of granularity.
+- A stable `L3OrderBook` trait defines the operations supported at order granularity; an `L2OrderBook` trait is planned for price-level granularity.
 - Concrete implementations provide different data structures and optimization trade-offs.
 
 This allows each strategy or matching engine to choose the implementation that best fits its requirements, without coupling consuming code to a particular data structure.
@@ -30,7 +30,7 @@ The two representations therefore serve different purposes: L3 provides greater 
 
 The `vec` implementation is the first of what is intended to be a family of implementations, each tuned for a specific access pattern — e.g. a tree- or heap-backed book for insertion-heavy feeds, or an array/map-backed book for tight quoting loops. All of them will stay behind the `L3OrderBook` interface.
 
-There is no Level-2 implementations yet, but it is planned for later.
+There is no Level-2 implementation yet; it is planned for later.
 
 ## Crate Architecture
 
@@ -38,14 +38,14 @@ There is no Level-2 implementations yet, but it is planned for later.
 orderbook
 ├── order            # domain primitives (fields + LimitOrder / RestingOrder)
 ├── errors           # OrderBookError
-└── level3
+├── level3
     ├── traits.rs    # L3OrderBook interface
     └── vec          # VecL3OrderBook implementation
         ├── book.rs  # order book: two sides + order index
         ├── side.rs  # one side: sorted levels
         └── level.rs # one level: FIFO orders + total quantity
-└── level2
-    ├── traits.rs 
+└── level2          # planned, not yet implemented
+    ├── traits.rs
     └── ...
 ```
 
@@ -66,7 +66,7 @@ Operations that cannot be performed are reported through `OrderBookError`:
 
 ### An interface, many implementations
 
-The crate/level3 is organized around the `L3OrderBook` trait:
+The `level3` module is organized around the `L3OrderBook` trait:
 
 ```rust
 pub trait L3OrderBook {

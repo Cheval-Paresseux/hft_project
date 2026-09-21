@@ -80,7 +80,6 @@ impl L3OrderBook for VecL3OrderBook {
             OrderSide::Ask => self.ask_side.fill_order(order_id, price, fill_quantity)?,
         }
 
-        // A fully filled order leaves the book, so it also leaves the index.
         if self.order(order_id).is_err() {
             self.orders_map.remove(&order_id);
         }

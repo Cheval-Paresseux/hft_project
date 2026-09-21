@@ -10,7 +10,7 @@ fn limit(id: u64, quantity: u64, side: OrderSide, price: u64) -> LimitOrder {
     LimitOrder::new(id.into(), 0.into(), quantity.into(), side, price.into())
 }
 
-// ── Workflow tests: any test simulates an order flow through the book ─────────
+// ── Integration tests ─────────────────────────────────────────────────────────
 
 #[test]
 fn liquidity_build_up_and_queries() {
