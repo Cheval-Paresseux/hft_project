@@ -238,12 +238,20 @@ mod tests {
 
     #[test]
     fn modify_order() {
-        todo!() //really basic stuff as it is just a redirection
+        let mut side = VecL3BookSide::new(OrderSide::Ask);
+        side.add_order(make_limit(1, OrderSide::Ask, 100));
+
+        assert_eq!(side.modify_order(1.into(), 100.into(), 5.into()), Ok(()));
+        assert_eq!(side.quantity_at(100.into()), 5.into());
     }
 
     #[test]
     fn fill_order() {
-        todo!() //really basic stuff as it is just a redirection
+        let mut side = VecL3BookSide::new(OrderSide::Ask);
+        side.add_order(make_limit(1, OrderSide::Ask, 100));
+
+        assert_eq!(side.fill_order(1.into(), 100.into(), 1.into()), Ok(()));
+        assert_eq!(side.quantity_at(100.into()), 0.into());
     }
 
     #[test]

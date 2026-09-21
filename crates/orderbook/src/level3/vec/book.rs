@@ -217,7 +217,7 @@ mod tests {
 
         book.add_order(make_limit(1, 10, OrderSide::Bid, 100));
         
-        let expected_result = (OrderSide::Ask, Price::new(100), Quantity::new(10));
+        let expected_result = (OrderSide::Bid, Price::new(100), Quantity::new(10));
         assert_eq!(book.order(1.into()), Ok(expected_result))
     }
 
