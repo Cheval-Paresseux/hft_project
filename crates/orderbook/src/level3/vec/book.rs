@@ -76,9 +76,16 @@ impl L3OrderBook for VecL3OrderBook {
         let &(side, price) = self.find_order(order_id)?;
 
         match side {
-            OrderSide::Bid => self.bid_side.fill_order(order_id, price, fill_quantity),
-            OrderSide::Ask => self.ask_side.fill_order(order_id, price, fill_quantity),
+            OrderSide::Bid => self.bid_side.fill_order(order_id, price, fill_quantity)?,
+            OrderSide::Ask => self.ask_side.fill_order(order_id, price, fill_quantity)?,
         }
+
+        // A fully filled order leaves the book, so it also leaves the index.
+        if self.order(order_id).is_err() {
+            self.orders_map.remove(&order_id);
+        }
+
+        Ok(())
     }
 
     // ── Book Look Up ──────────────────────────────────────────────────────────────

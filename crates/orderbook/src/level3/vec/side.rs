@@ -91,7 +91,13 @@ impl VecL3BookSide {
     ) -> Result<(), OrderBookError> {
         let position = self.find_level(order_price)?;
 
-        self.levels[position].fill_order(order_id, fill_quantity)
+        self.levels[position].fill_order(order_id, fill_quantity)?;
+
+        if self.levels[position].is_empty() {
+            self.levels.remove(position);
+        }
+
+        Ok(())
     }
 }
 

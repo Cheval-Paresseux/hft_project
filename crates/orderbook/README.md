@@ -1,75 +1,38 @@
 # Orderbook
 
-A collection of **level-3 (L3) order book** structures, exposed behind a single common interface.
+A collection of **Level 3 (L3)** and **Level 2 (L2)** order book structures, exposed through a common interface.
 
-The crate separates **what an order book does** from **how it does it**:
+The crate separates **what an order book does** from **how it is implemented**:
 
-- a stable `L3OrderBook` trait defines the operations any order book must support;
-- concrete implementations live behind that trait, and each one makes different trade-offs.
+- Stable `L3OrderBook` and `L2OrderBook` traits define the operations supported by each level of granularity.
+- Concrete implementations provide different data structures and optimization trade-offs.
 
-This lets every **strategy or matching engine pick the implementation that best fits its own optimization requirements**, without the consuming code depending on any particular data structure.
+This allows each strategy or matching engine to choose the implementation that best fits its requirements, without coupling consuming code to a particular data structure.
 
 ## Motivation
 
-> **Why implement order book structures?**
+### Why implement order book structures?
 
-Being able to maintain order book data is key to the rest of the system. It allows to take the raw feed of orders directly and then perform only the required amount of computation, hence maximizing the efficiency and the quality of the data you ingest.
+Maintaining order book data is fundamental to the rest of the system. It allows raw order feeds to be maintained in a structured form and enables downstream components to perform only the computations they require, reducing unnecessary work and improving the efficiency of data processing.
 
-An L3 order book does not aggregate: it keeps every individual resting order, which is what makes it possible to query the *best* order, to target a specific order, and to reconstruct the feed faithfully.
+An **L3 order book** maintains every individual resting order rather than aggregating orders at each price level. This preserves order-level information, making it possible to:
 
-## Design
+- inspect the best individual order;
+- target and modify a specific order by its ID;
+- process orders according to price-time priority;
+- reconstruct the order-level state represented by the feed.
 
-### An interface, many implementations
+An **L2 order book** aggregates orders by price level. This sacrifices individual order information in exchange for a more compact representation focused on aggregate quantities and prices.
 
-The whole crate is organized around the `L3OrderBook` trait:
+The two representations therefore serve different purposes: L3 provides greater granularity and information, while L2 provides a representation optimized for price-level queries and aggregate market depth.
 
-```rust
-pub trait L3OrderBook {
-    fn add_order(&mut self, order: LimitOrder);
-    fn cancel_order(&mut self, order_id: OrderId) -> Result<(), OrderBookError>;
-    fn modify_order(&mut self, order_id: OrderId, new_quantity: Quantity) -> Result<(), OrderBookError>;
-    fn fill(&mut self, order_id: OrderId, quantity: Quantity) -> Result<(), OrderBookError>;
+## Roadmap
 
-    fn best(&self, side: OrderSide) -> Option<(OrderId, Price, Quantity)>;
-    fn best_price(&self, side: OrderSide) -> Option<Price>;
-    fn quantity_at(&self, side: OrderSide, price: Price) -> Quantity;
-}
-```
+The `vec` implementation is the first of what is intended to be a family of implementations, each tuned for a specific access pattern — e.g. a tree- or heap-backed book for insertion-heavy feeds, or an array/map-backed book for tight quoting loops. All of them will stay behind the `L3OrderBook` interface.
 
-The first group mutates the book; the second group queries it.
+There is no Level-2 implementations yet, but it is planned for later.
 
-Concrete implementations are provided under `level3::`, e.g. `VecL3OrderBook`. Nothing in the trait leaks implementation details, so a strategy can be written against the trait and later swapped to a different implementation with no changes to its logic.
-
-### Choosing an implementation
-
-Different trading strategies access the book in different ways, and the "best" data structure depends on which operations dominate:
-
-- **insert-heavy flows** (market-data ingestion) benefit from cheap `add_order`;
-- **aggressive flows** (market-making, quoting) spend most of their time on `cancel` / `modify`;
-- **latency-sensitive quotes** need `best` / `best_price` to be as close to O(1) as possible;
-- **aggregation and risk checks** rely on `quantity_at`.
-
-Because these requirements can conflict, the crate deliberately does **not** hard-code a single structure: each implementation is a point in that trade-off space, and the matching engine or strategy selects the one that fits its workload.
-
-### Responsibility of the order book
-
-The order book is responsible for holding the orders data while ensuring FIFO. This separation of concerns is explicit: the order book handles the *structure*, the matching engine handles the *matching*.
-
-It is important to notice that the FIFO maintained by the order book only concerns the orders themselves, **not their metadata**. Re-ordering due to timestamp, or an increase in quantity, is managed by the matching engine.
-
-## Data Model
-
-- `OrderId`, `Price`, `Quantity`, `Timestamp`, `OrderSide` — primitive newtype fields, so quantities and prices cannot be mixed accidentally.
-- `LimitOrder` — an incoming order, carrying `id`, `timestamp`, `quantity`, `side` and `price`.
-- `RestingOrder` — an order stored in the book (id, timestamp, quantity); a `LimitOrder` is reduced to a `RestingOrder` on arrival.
-
-Operations that cannot be performed are reported through `OrderBookError`:
-
-- `OrderIdNotFound` — the order is not in the book;
-- `PriceLevelNotFound` — there is no level at that price;
-- `FillExceedsOrderQuantity` — a fill is larger than the resting quantity.
-
-## Architecture
+## Crate Architecture
 
 ```text
 orderbook
@@ -81,7 +44,51 @@ orderbook
         ├── book.rs  # order book: two sides + order index
         ├── side.rs  # one side: sorted levels
         └── level.rs # one level: FIFO orders + total quantity
+└── level2
+    ├── traits.rs 
+    └── ...
 ```
+
+## Data Model
+
+- `OrderId`, `Price`, `Quantity`, `Timestamp`, `OrderSide` — primitive newtype fields, so quantities and prices cannot be mixed accidentally.
+- `LimitOrder` — an incoming order, carrying `id`, `timestamp`, `quantity`, `side` and `price`.
+
+- L3 only: `RestingOrder` — an order stored in the book (id, timestamp, quantity); a `LimitOrder` is reduced to a `RestingOrder` on arrival.
+
+Operations that cannot be performed are reported through `OrderBookError`:
+
+- `OrderIdNotFound` — the order is not in the book;
+- `PriceLevelNotFound` — there is no level at that price;
+- `FillExceedsOrderQuantity` — a fill is larger than the resting quantity.
+
+## **Level 3 (L3) Order Book**
+
+### An interface, many implementations
+
+The crate/level3 is organized around the `L3OrderBook` trait:
+
+```rust
+pub trait L3OrderBook {
+    fn add_order(&mut self, order: LimitOrder);
+    fn cancel_order(&mut self, order_id: OrderId) -> Result<(), OrderBookError>;
+    fn modify_order(&mut self, order_id: OrderId, new_quantity: Quantity) -> Result<(), OrderBookError>;
+    fn fill_order(&mut self, order_id: OrderId, fill_quantity: Quantity) -> Result<(), OrderBookError>;
+
+    fn order(&self, order_id: OrderId) -> Result<(OrderSide, Price, Quantity), OrderBookError>;
+    fn top_order(&self, side: OrderSide) -> Option<(OrderId, Price, Quantity)>;
+    fn orders_at(&self, side: OrderSide, price: Price) -> Result<Vec<(OrderId, Quantity)>, OrderBookError>;
+    fn orders_up_to(&self, side: OrderSide, bound: Option<Price>) -> Vec<(OrderId, Price, Quantity)>;
+
+    fn top_price(&self, side: OrderSide) -> Option<Price>;
+    fn quantity_at(&self, side: OrderSide, price: Price) -> Quantity;
+    fn quantity_up_to(&self, side: OrderSide, bound: Option<Price>) -> Quantity;
+}
+```
+
+The first group mutates the book; the second group queries it.
+
+Concrete implementations are provided under `level3::`, e.g. `VecL3OrderBook`. Nothing in the trait leaks implementation details, so a strategy can be written against the trait and later swapped to a different implementation with no changes to its logic.
 
 ### The `vec` implementation
 
@@ -94,7 +101,7 @@ orderbook
 
 The result is a simple, predictable structure with good constant factors for add/cancel/modify and fast best-order access.
 
-## Usage
+### Usage
 
 ```rust
 use orderbook::{
@@ -113,23 +120,19 @@ book.add_order(LimitOrder::new(
     100.into(),            // limit price
 ));
 
-// The best bid is now this order.
-assert_eq!(book.best(OrderSide::Bid), Some((1.into(), 100.into(), 10.into())));
-assert_eq!(book.best_price(OrderSide::Bid), Some(100.into()));
+// The best order and the best price on each side.
+assert_eq!(book.top_order(OrderSide::Bid), Some((1.into(), 100.into(), 10.into())));
+assert_eq!(book.top_price(OrderSide::Bid), Some(100.into()));
 assert_eq!(book.quantity_at(OrderSide::Bid, 100.into()), 10.into());
 
 // The order is partially filled...
-book.fill(1.into(), 4.into()).unwrap();
+book.fill_order(1.into(), 4.into()).unwrap();
 
 // ...then modified, and finally cancelled.
 book.modify_order(1.into(), 5.into()).unwrap();
 book.cancel_order(1.into()).unwrap();
 
-assert_eq!(book.best(OrderSide::Bid), None);
+assert_eq!(book.top_order(OrderSide::Bid), None);
 ```
 
 Consumer code only ever depends on the `L3OrderBook` trait, so the concrete book can be swapped without touching the strategy.
-
-## Roadmap
-
-The `vec` implementation is the first of what is intended to be a family of implementations, each tuned for a specific access pattern — e.g. a tree- or heap-backed book for insertion-heavy feeds, or an array/map-backed book for tight quoting loops. All of them will stay behind the `L3OrderBook` interface.

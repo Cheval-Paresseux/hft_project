@@ -77,6 +77,10 @@ impl VecL3BookLevel {
         self.orders[position].fill(fill_quantity)?;
         self.total_quantity -= fill_quantity;
 
+        if self.orders[position].quantity.is_zero() {
+            self.orders.remove(position);
+        }
+
         Ok(())
     }
 }
