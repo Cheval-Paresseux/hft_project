@@ -35,6 +35,29 @@ impl VecL3BookSide {
             Err(_) => 0.into(),
         }
     }
+
+    pub fn available_quantity(&self, bound: Option<Price>) -> Quantity {
+        let mut total = Quantity::new(0);
+
+        for level in &self.levels {
+            match self.side {
+                OrderSide::Ask => {
+                    if bound.is_some_and(|bound| level.price > bound) {
+                        break;
+                    }
+                }
+                OrderSide::Bid => {
+                    if bound.is_some_and(|bound| level.price < bound) {
+                        break;
+                    }
+                }
+            }
+
+            total += level.total_quantity;
+        }
+
+        total
+    }
 }
 
 impl VecL3BookSide {
@@ -203,7 +226,9 @@ mod tests {
 
         assert_eq!(
             side.fill_order(42.into(), 100.into(), 1.into()),
-            Err(OrderBookError::OrderIdNotFound { order_id: 42.into() })
+            Err(OrderBookError::OrderIdNotFound {
+                order_id: 42.into()
+            })
         );
     }
 

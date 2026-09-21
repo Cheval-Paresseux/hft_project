@@ -99,6 +99,13 @@ impl L3OrderBook for VecL3OrderBook {
             OrderSide::Ask => self.ask_side.quantity_at(price),
         }
     }
+
+    fn available_quantity(&self, side: OrderSide, bound: Option<Price>) -> Quantity {
+        match side {
+            OrderSide::Bid => self.bid_side.available_quantity(bound),
+            OrderSide::Ask => self.ask_side.available_quantity(bound),
+        }
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -166,6 +173,26 @@ mod tests {
 
         assert_eq!(book.quantity_at(OrderSide::Bid, 100.into()), 15.into());
         assert_eq!(book.quantity_at(OrderSide::Ask, 100.into()), 0.into());
+    }
+
+    #[test]
+    fn available_quantity() {
+        let mut book = VecL3OrderBook::default();
+
+        book.add_order(make_limit(1, 10, OrderSide::Ask, 100));
+        book.add_order(make_limit(2, 5, OrderSide::Ask, 101));
+        book.add_order(make_limit(3, 7, OrderSide::Ask, 103));
+        book.add_order(make_limit(4, 8, OrderSide::Bid, 100));
+        book.add_order(make_limit(5, 8, OrderSide::Bid, 99));
+
+        assert_eq!(book.available_quantity(OrderSide::Ask, None), 22.into());
+        assert_eq!(book.available_quantity(OrderSide::Ask, Some(101.into())), 15.into());
+        assert_eq!(book.available_quantity(OrderSide::Ask, Some(100.into())), 10.into());
+        assert_eq!(book.available_quantity(OrderSide::Ask, Some(99.into())), 0.into());
+
+        assert_eq!(book.available_quantity(OrderSide::Bid, None), 16.into());
+        assert_eq!(book.available_quantity(OrderSide::Bid, Some(100.into())), 8.into());
+        assert_eq!(book.available_quantity(OrderSide::Bid, Some(99.into())), 16.into());
     }
 
     #[test]

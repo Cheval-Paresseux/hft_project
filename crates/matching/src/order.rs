@@ -1,5 +1,5 @@
 pub mod fields;
 pub mod orders;
 
-pub use fields::{OrderKind, TimeInForce};
-pub use orders::Order;
+pub use fields::{MarketTimeInForce, TimeInForce};
+pub use orders::{LimitOrder, MarketOrder, Order, StopLimitOrder, StopOrder};

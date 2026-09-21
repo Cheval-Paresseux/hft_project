@@ -19,4 +19,6 @@ pub trait L3OrderBook: Default {
 
     fn best_price(&self, side: OrderSide) -> Option<Price>;
     fn quantity_at(&self, side: OrderSide, price: Price) -> Quantity;
+
+    fn available_quantity(&self, side: OrderSide, bound: Option<Price>) -> Quantity;
 }
