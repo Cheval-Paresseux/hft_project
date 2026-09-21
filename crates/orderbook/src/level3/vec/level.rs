@@ -201,4 +201,34 @@ mod tests {
             })
         );
     }
+
+    #[test]
+    fn order() {
+        let mut level = VecL3BookLevel::new(100.into());
+        level.add_order(make_limit(1, 10));
+
+        assert_eq!(level.order(1.into()), Ok(10.into()));
+    }
+
+    #[test]
+    fn top_order() {
+        let mut level = VecL3BookLevel::new(100.into());
+        level.add_order(make_limit(1, 10));
+        level.add_order(make_limit(2, 5));
+
+        assert_eq!(level.top_order(), Some((1.into(), 10.into())));
+    }
+
+    #[test]
+    fn orders_at() {
+        let mut level = VecL3BookLevel::new(100.into());
+        level.add_order(make_limit(1, 10));
+        level.add_order(make_limit(2, 5));
+
+        let expected_result = vec![
+            (1.into(), 10.into()),
+            (2.into(), 5.into()),
+        ];
+        assert_eq!(level.orders_at(), expected_result);
+    }
 }
