@@ -72,7 +72,11 @@ impl L3OrderBook for VecL3OrderBook {
         }
     }
 
-    fn fill_order(&mut self, order_id: OrderId, fill_quantity: Quantity) -> Result<(), OrderBookError> {
+    fn fill_order(
+        &mut self,
+        order_id: OrderId,
+        fill_quantity: Quantity,
+    ) -> Result<(), OrderBookError> {
         let &(side, price) = self.find_order(order_id)?;
 
         match side {
@@ -105,17 +109,36 @@ impl L3OrderBook for VecL3OrderBook {
         }
     }
 
-    fn orders_at(&self, side: OrderSide, price: Price) -> Result<Vec<(OrderId, Quantity)>, OrderBookError> {
+    fn orders_at(
+        &self,
+        side: OrderSide,
+        price: Price,
+    ) -> Result<Vec<(OrderId, Quantity)>, OrderBookError> {
         match side {
             OrderSide::Bid => self.bid_side.orders_at(price),
             OrderSide::Ask => self.ask_side.orders_at(price),
         }
     }
 
-    fn orders_up_to(&self, side: OrderSide, bound: Option<Price>) -> Vec<(OrderId, Price, Quantity)> {
+    fn orders_up_to(
+        &self,
+        side: OrderSide,
+        bound: Option<Price>,
+    ) -> Vec<(OrderId, Price, Quantity)> {
         match side {
             OrderSide::Bid => self.bid_side.orders_up_to(bound),
             OrderSide::Ask => self.ask_side.orders_up_to(bound),
+        }
+    }
+
+    fn orders_up_to_quantity(
+        &self,
+        side: OrderSide,
+        bound: Option<Quantity>,
+    ) -> Vec<(OrderId, Price, Quantity)> {
+        match side {
+            OrderSide::Bid => self.bid_side.orders_up_to_quantity(bound),
+            OrderSide::Ask => self.ask_side.orders_up_to_quantity(bound),
         }
     }
 
@@ -222,7 +245,7 @@ mod tests {
         let mut book = VecL3OrderBook::default();
 
         book.add_order(make_limit(1, 10, OrderSide::Bid, 100));
-        
+
         let expected_result = (OrderSide::Bid, Price::new(100), Quantity::new(10));
         assert_eq!(book.order(1.into()), Ok(expected_result))
     }
@@ -253,11 +276,11 @@ mod tests {
         book.add_order(make_limit(1, 10, OrderSide::Bid, 100));
         book.add_order(make_limit(2, 10, OrderSide::Bid, 100));
 
-        let expected_result = vec![
-            (1.into(), 10.into()),
-            (2.into(), 10.into()),
-        ];
-        assert_eq!(book.orders_at(OrderSide::Bid, 100.into()), Ok(expected_result));
+        let expected_result = vec![(1.into(), 10.into()), (2.into(), 10.into())];
+        assert_eq!(
+            book.orders_at(OrderSide::Bid, 100.into()),
+            Ok(expected_result)
+        );
     }
 
     #[test]
@@ -287,7 +310,9 @@ mod tests {
             book.orders_up_to(OrderSide::Ask, Some(195.into())),
             vec![(4.into(), 195.into(), 8.into())]
         );
-        assert!(book.orders_up_to(OrderSide::Bid, Some(106.into())).is_empty());
+        assert!(book
+            .orders_up_to(OrderSide::Bid, Some(106.into()))
+            .is_empty());
     }
 
     #[test]
@@ -328,13 +353,31 @@ mod tests {
         book.add_order(make_limit(5, 8, OrderSide::Bid, 99));
 
         assert_eq!(book.quantity_up_to(OrderSide::Ask, None), 22.into());
-        assert_eq!(book.quantity_up_to(OrderSide::Ask, Some(101.into())), 15.into());
-        assert_eq!(book.quantity_up_to(OrderSide::Ask, Some(100.into())), 10.into());
-        assert_eq!(book.quantity_up_to(OrderSide::Ask, Some(99.into())), 0.into());
+        assert_eq!(
+            book.quantity_up_to(OrderSide::Ask, Some(101.into())),
+            15.into()
+        );
+        assert_eq!(
+            book.quantity_up_to(OrderSide::Ask, Some(100.into())),
+            10.into()
+        );
+        assert_eq!(
+            book.quantity_up_to(OrderSide::Ask, Some(99.into())),
+            0.into()
+        );
 
         assert_eq!(book.quantity_up_to(OrderSide::Bid, None), 16.into());
-        assert_eq!(book.quantity_up_to(OrderSide::Bid, Some(100.into())), 8.into());
-        assert_eq!(book.quantity_up_to(OrderSide::Bid, Some(99.into())), 16.into());
-        assert_eq!(book.quantity_up_to(OrderSide::Bid, Some(101.into())), 0.into());
+        assert_eq!(
+            book.quantity_up_to(OrderSide::Bid, Some(100.into())),
+            8.into()
+        );
+        assert_eq!(
+            book.quantity_up_to(OrderSide::Bid, Some(99.into())),
+            16.into()
+        );
+        assert_eq!(
+            book.quantity_up_to(OrderSide::Bid, Some(101.into())),
+            0.into()
+        );
     }
 }

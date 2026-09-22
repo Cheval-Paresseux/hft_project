@@ -23,7 +23,7 @@ impl VecL3BookLevel {
     pub fn is_empty(&self) -> bool {
         self.orders.is_empty()
     }
-    
+
     fn find_position(&self, order_id: OrderId) -> Result<usize, OrderBookError> {
         self.orders
             .iter()
@@ -90,13 +90,13 @@ impl VecL3BookLevel {
 impl VecL3BookLevel {
     pub fn order(&self, order_id: OrderId) -> Result<Quantity, OrderBookError> {
         let position = self.find_position(order_id)?;
-        
+
         Ok(self.orders[position].quantity)
     }
 
     pub fn top_order(&self) -> Option<(OrderId, Quantity)> {
         let first = self.orders.first()?;
-        
+
         Some((first.id, first.quantity))
     }
 
@@ -104,7 +104,6 @@ impl VecL3BookLevel {
         let mut orders = Vec::with_capacity(self.orders.len());
         for order in &self.orders {
             orders.push((order.id, order.quantity));
-
         }
 
         orders
@@ -229,10 +228,7 @@ mod tests {
         level.add_order(make_limit(1, 10));
         level.add_order(make_limit(2, 5));
 
-        let expected_result = vec![
-            (1.into(), 10.into()),
-            (2.into(), 5.into()),
-        ];
+        let expected_result = vec![(1.into(), 10.into()), (2.into(), 5.into())];
         assert_eq!(level.orders_at(), expected_result);
     }
 }
