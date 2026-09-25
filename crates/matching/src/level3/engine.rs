@@ -1,8 +1,14 @@
-use crate::{level3::{execution::{ExecutionInstruction::{self, Cancel, Modify}, ExecutionPolicy}, message::EngineMessage::{self, New}}, order::{
-    LimitOrder, MarketOrder, MarketTimeInForce, Order, StopLimitOrder, StopOrder, TimeInForce,
-}};
+use super::{
+    execution::{ExecutionInstruction, ExecutionPolicy},
+    message::EngineMessage
+};
+
+use crate::order::{Order, MarketOrder, LimitOrder, StopOrder, StopLimitOrder};
+
 use orderbook::{
-    errors::OrderBookError, level3::L3OrderBook, order::{LimitOrder as BookLimitOrder, OrderId, OrderSide, Price, Quantity},
+    errors::OrderBookError,
+    level3::L3OrderBook,
+    order::{LimitOrder as BookLimitOrder, OrderId, Quantity}
 };
 
 // ── Matching Engine ───────────────────────────────────────────────────────────
@@ -59,19 +65,25 @@ impl<OB: L3OrderBook> L3MatchingEngine<OB> {
 impl<OB: L3OrderBook> L3MatchingEngine<OB> {
     fn new_order_policy(&self, order: Order) -> ExecutionPolicy {
         let mut policy = ExecutionPolicy::new();
+        match order {
+            Order::Market(o) => {},
+            Order::Limit(o) => {},
+            Order::Stop(o) => {},
+            Order::StopLimit(o) => {}, 
+        };
         
         policy
     }
 
     fn cancel_order_policy(&self, order_id: OrderId) -> ExecutionPolicy {
-        let mut policy = ExecutionPolicy::new();
+        let mut policy = ExecutionPolicy::with_capacity(1);
         policy.add(ExecutionInstruction::Cancel { order_id });
 
         policy
     }
 
     fn modify_order_policy(&self, order_id: OrderId, new_quantity: Quantity) -> ExecutionPolicy {
-        let mut policy = ExecutionPolicy::new();
+        let mut policy = ExecutionPolicy::with_capacity(1);
         policy.add(ExecutionInstruction::Modify { order_id, new_quantity });
 
         policy
