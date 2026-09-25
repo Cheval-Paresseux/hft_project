@@ -38,7 +38,7 @@ impl ExecutionPolicy {
 }
 
 impl ExecutionPolicy {
-    pub fn add(mut self, instruction: ExecutionInstruction) {
+    pub fn add(&mut self, instruction: ExecutionInstruction) {
         self.instructions.push(instruction);
     }
 

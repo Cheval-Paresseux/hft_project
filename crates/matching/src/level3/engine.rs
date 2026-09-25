@@ -57,11 +57,23 @@ impl<OB: L3OrderBook> L3MatchingEngine<OB> {
 // ── Execution Policies ────────────────────────────────────────────────────────
 
 impl<OB: L3OrderBook> L3MatchingEngine<OB> {
-    fn new_order_policy(&self, order: Order) -> ExecutionPolicy {}
+    fn new_order_policy(&self, order: Order) -> ExecutionPolicy {
+        let mut policy = ExecutionPolicy::new();
+        
+        policy
+    }
 
-    fn cancel_order_policy(&self, order_id: OrderId) -> ExecutionPolicy {}
+    fn cancel_order_policy(&self, order_id: OrderId) -> ExecutionPolicy {
+        let mut policy = ExecutionPolicy::new();
+        policy.add(ExecutionInstruction::Cancel { order_id });
 
-    fn modify_order_policy(&self, order_id: OrderId, new_quantity: Quantity) -> ExecutionPolicy {}
+        policy
+    }
 
-    
+    fn modify_order_policy(&self, order_id: OrderId, new_quantity: Quantity) -> ExecutionPolicy {
+        let mut policy = ExecutionPolicy::new();
+        policy.add(ExecutionInstruction::Modify { order_id, new_quantity });
+
+        policy
+    }
 }
