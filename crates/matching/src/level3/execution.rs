@@ -1,5 +1,5 @@
 use orderbook::{
-    order::{LimitOrder as BookLimitOrder, OrderId, OrderSide, Price, Quantity},
+    order::{LimitOrder as BookLimitOrder, OrderId, Quantity},
 };
 
 // ── Execution Instruction ─────────────────────────────────────────────────────
@@ -21,25 +21,34 @@ pub struct ExecutionPolicy {
 
 impl ExecutionPolicy {
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            instructions: Vec::new()
+        }
     }
 
-    /// Append an instruction, builder style.
-    pub fn with(mut self, instruction: ExecutionInstruction) -> Self {
-        self.instructions.push(instruction);
-        self
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            instructions: Vec::with_capacity(capacity)
+        }
     }
 
     pub fn is_empty(&self) -> bool {
         self.instructions.is_empty()
     }
+}
+
+impl ExecutionPolicy {
+    pub fn add(mut self, instruction: ExecutionInstruction) {
+        self.instructions.push(instruction);
+    }
 
     pub fn instructions(&self) -> &[ExecutionInstruction] {
         &self.instructions
     }
+}
 
-    /// Total quantity consumed from the book by this policy's fill instructions.
-    pub fn filled_quantity(&self) -> Quantity {
+impl ExecutionPolicy {
+    pub fn filling_quantity(&self) -> Quantity {
         self.instructions
             .iter()
             .filter_map(|instruction| match instruction {

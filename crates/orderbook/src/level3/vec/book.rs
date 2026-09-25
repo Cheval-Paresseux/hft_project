@@ -316,6 +316,53 @@ mod tests {
     }
 
     #[test]
+    fn orders_up_to_quantity() {
+        let mut book = VecL3OrderBook::default();
+
+        book.add_order(make_limit(1, 10, OrderSide::Bid, 100));
+        book.add_order(make_limit(2, 5, OrderSide::Bid, 105));
+        book.add_order(make_limit(3, 7, OrderSide::Ask, 200));
+        book.add_order(make_limit(4, 8, OrderSide::Ask, 195));
+
+        assert_eq!(
+            book.orders_up_to_quantity(OrderSide::Bid, None),
+            vec![
+                (2.into(), 105.into(), 5.into()),
+                (1.into(), 100.into(), 10.into()),
+            ]
+        );
+        assert_eq!(
+            book.orders_up_to_quantity(OrderSide::Ask, None),
+            vec![
+                (4.into(), 195.into(), 8.into()),
+                (3.into(), 200.into(), 7.into()),
+            ]
+        );
+        assert_eq!(
+            book.orders_up_to_quantity(OrderSide::Ask, Some(8.into())),
+            vec![(4.into(), 195.into(), 8.into())]
+        );
+        assert_eq!(
+            book.orders_up_to_quantity(OrderSide::Ask, Some(12.into())),
+            vec![
+                (4.into(), 195.into(), 8.into()),
+                (3.into(), 200.into(), 7.into()),
+            ]
+        );
+        assert_eq!(
+            book.orders_up_to_quantity(OrderSide::Bid, Some(5.into())),
+            vec![(2.into(), 105.into(), 5.into())]
+        );
+        assert_eq!(
+            book.orders_up_to_quantity(OrderSide::Bid, Some(100.into())),
+            book.orders_up_to_quantity(OrderSide::Bid, None)
+        );
+        assert!(VecL3OrderBook::default()
+            .orders_up_to_quantity(OrderSide::Bid, Some(1.into()))
+            .is_empty());
+    }
+
+    #[test]
     fn top_price() {
         let mut book = VecL3OrderBook::default();
 

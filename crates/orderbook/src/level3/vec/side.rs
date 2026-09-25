@@ -371,6 +371,63 @@ mod tests {
     }
 
     #[test]
+    fn orders_up_to_quantity() {
+        let mut asks = VecL3BookSide::new(OrderSide::Ask);
+        let mut bids = VecL3BookSide::new(OrderSide::Bid);
+
+        asks.add_order(make_limit(1, OrderSide::Ask, 100));
+        asks.add_order(make_limit(2, OrderSide::Ask, 100));
+        asks.add_order(make_limit(3, OrderSide::Ask, 105));
+        bids.add_order(make_limit(4, OrderSide::Bid, 100));
+        bids.add_order(make_limit(5, OrderSide::Bid, 95));
+
+        assert_eq!(
+            asks.orders_up_to_quantity(None),
+            vec![
+                (1.into(), 100.into(), 1.into()),
+                (2.into(), 100.into(), 1.into()),
+                (3.into(), 105.into(), 1.into()),
+            ]
+        );
+        // level 100 holds a total quantity of 2, so bounds 1 and 2 stop there
+        assert_eq!(
+            asks.orders_up_to_quantity(Some(1.into())),
+            vec![
+                (1.into(), 100.into(), 1.into()),
+                (2.into(), 100.into(), 1.into()),
+            ]
+        );
+        assert_eq!(
+            asks.orders_up_to_quantity(Some(2.into())),
+            vec![
+                (1.into(), 100.into(), 1.into()),
+                (2.into(), 100.into(), 1.into()),
+            ]
+        );
+        // bound 3 requires the 105 level as well
+        assert_eq!(
+            asks.orders_up_to_quantity(Some(3.into())),
+            vec![
+                (1.into(), 100.into(), 1.into()),
+                (2.into(), 100.into(), 1.into()),
+                (3.into(), 105.into(), 1.into()),
+            ]
+        );
+        assert_eq!(
+            asks.orders_up_to_quantity(Some(10.into())),
+            asks.orders_up_to_quantity(None)
+        );
+
+        assert_eq!(
+            bids.orders_up_to_quantity(Some(1.into())),
+            vec![(4.into(), 100.into(), 1.into())]
+        );
+        assert!(VecL3BookSide::new(OrderSide::Ask)
+            .orders_up_to_quantity(Some(1.into()))
+            .is_empty());
+    }
+
+    #[test]
     fn top_price() {
         let mut asks = VecL3BookSide::new(OrderSide::Ask);
         let mut bids = VecL3BookSide::new(OrderSide::Bid);
