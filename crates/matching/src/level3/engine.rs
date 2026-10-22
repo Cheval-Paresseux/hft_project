@@ -44,7 +44,7 @@ impl<OB: L3OrderBook> L3MatchingEngine<OB> {
 
     fn execute(&mut self, policy: ExecutionPolicy) {
         for instruction in policy.instructions() {
-            let result = match instruction {
+            let _result = match instruction {
                 ExecutionInstruction::Add(order) => {
                     self.orderbook.add_order(*order);
                     Ok(())
