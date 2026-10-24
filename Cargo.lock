@@ -828,6 +828,7 @@ name = "orderbook"
 version = "0.1.0"
 dependencies = [
  "thiserror",
+ "types",
 ]
 
 [[package]]

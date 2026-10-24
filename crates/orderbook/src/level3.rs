@@ -1,5 +1,5 @@
-pub mod traits;
+pub mod common;
 pub mod vec;
 
-pub use traits::L3OrderBook;
+pub use common::L3OrderBook;
 pub use vec::VecL3OrderBook;

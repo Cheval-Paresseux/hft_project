@@ -1,7 +1,21 @@
-use crate::{
-    errors::OrderBookError,
-    order::{LimitOrder, OrderId, OrderSide, Price, Quantity},
+use types::order::{
+    fields::{OrderId, Price, Quantity},
+    orders::{LimitOrder, RestingLimitOrder},
 };
+
+use thiserror::Error;
+
+// ── Order Error ───────────────────────────────────────────────────────────────
+
+#[derive(Error, Debug, PartialEq, Eq)]
+pub enum OrderBookError {
+    #[error("order with id {order_id:?} not found")]
+    OrderIdNotFound { order_id: OrderId },
+
+    #[error("price level {price:?} not found")]
+    PriceLevelNotFound { price: Price },
+}
+
 
 // ── L3 Order Book  ────────────────────────────────────────────────────────────
 

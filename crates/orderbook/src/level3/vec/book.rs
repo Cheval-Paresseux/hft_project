@@ -2,7 +2,7 @@ use super::side::VecL3BookSide;
 
 use crate::{
     errors::OrderBookError,
-    level3::traits::L3OrderBook,
+    level3::common::L3OrderBook,
     order::{LimitOrder, OrderId, OrderSide, Price, Quantity},
 };
 
