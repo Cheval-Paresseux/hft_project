@@ -1,4 +1,4 @@
-use crate::level3::common::{add_quantities, sub_quantities, OrderBookError};
+use crate::level3::common::{OrderBookError, add_quantities, sub_quantities};
 
 use types::order::{
     fields::{OrderId, Price, Quantity},
@@ -122,7 +122,7 @@ impl VecL3BookLevel {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use types::order::{orders::OrderError, OrderSide, TimeInForce};
+    use types::order::{OrderSide, TimeInForce, orders::OrderError};
 
     fn make_limit(id: u64, quantity: u64) -> LimitOrder {
         LimitOrder::new(

@@ -10,7 +10,7 @@ use thiserror::Error;
 #[derive(Error, Debug, PartialEq, Eq)]
 pub enum OrderBookError {
     #[error("order error")]
-    OrderError(OrderError),
+    OrderError(#[from] OrderError),
 
     #[error("order with id {order_id:?} not found")]
     OrderIdNotFound { order_id: OrderId },
@@ -23,12 +23,6 @@ pub enum OrderBookError {
 
     #[error("quantity overflow")]
     QuantityOverflow,
-}
-
-impl From<OrderError> for OrderBookError {
-    fn from(error: OrderError) -> Self {
-        Self::OrderError(error)
-    }
 }
 
 // ── Quantity Overflow not panic ───────────────────────────────────────────────

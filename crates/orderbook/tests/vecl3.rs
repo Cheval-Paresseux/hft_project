@@ -1,4 +1,4 @@
-use orderbook::level3::{common::OrderBookError, L3OrderBook, VecL3OrderBook};
+use orderbook::level3::{L3OrderBook, VecL3OrderBook, common::OrderBookError};
 use types::order::{LimitOrder, OrderSide, TimeInForce};
 
 // ── Helpers ──────────────────────────────────────────────────────────────────

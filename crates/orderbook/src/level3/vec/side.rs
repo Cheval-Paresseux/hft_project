@@ -1,6 +1,6 @@
 use super::level::VecL3BookLevel;
 
-use crate::level3::common::{add_quantities, OrderBookError};
+use crate::level3::common::{OrderBookError, add_quantities};
 
 use types::order::{
     fields::{OrderId, OrderSide, Price, Quantity},
