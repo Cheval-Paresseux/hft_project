@@ -1,6 +1,8 @@
-use crate::{
-    errors::OrderBookError,
-    order::{LimitOrder, OrderId, Price, Quantity, RestingOrder},
+use crate::level3::common::{add_quantities, sub_quantities, OrderBookError};
+
+use types::order::{
+    fields::{OrderId, Price, Quantity},
+    orders::{LimitOrder, Order, RestingLimitOrder},
 };
 
 // ── Book Level ────────────────────────────────────────────────────────────────
@@ -8,7 +10,7 @@ use crate::{
 pub struct VecL3BookLevel {
     pub price: Price,
     pub total_quantity: Quantity,
-    orders: Vec<RestingOrder>,
+    orders: Vec<RestingLimitOrder>,
 }
 
 impl VecL3BookLevel {
@@ -27,7 +29,7 @@ impl VecL3BookLevel {
     fn find_position(&self, order_id: OrderId) -> Result<usize, OrderBookError> {
         self.orders
             .iter()
-            .position(|o| o.id == order_id)
+            .position(|o| o.id() == order_id)
             .ok_or(OrderBookError::OrderIdNotFound { order_id })
     }
 }
@@ -35,14 +37,17 @@ impl VecL3BookLevel {
 // ── Book Mutations ────────────────────────────────────────────────────────────
 
 impl VecL3BookLevel {
-    pub fn add_order(&mut self, order: LimitOrder) {
+    pub fn add_order(&mut self, order: LimitOrder) -> Result<(), OrderBookError> {
+        self.total_quantity = add_quantities(self.total_quantity, order.quantity())?;
         self.orders.push(order.into());
-        self.total_quantity += order.quantity;
+
+        Ok(())
     }
 
     pub fn cancel_order(&mut self, order_id: OrderId) -> Result<(), OrderBookError> {
         let position = self.find_position(order_id)?;
-        self.total_quantity -= self.orders[position].quantity;
+        self.total_quantity =
+            sub_quantities(self.total_quantity, self.orders[position].quantity())?;
         self.orders.remove(position);
 
         Ok(())
@@ -54,16 +59,16 @@ impl VecL3BookLevel {
         new_quantity: Quantity,
     ) -> Result<(), OrderBookError> {
         let position = self.find_position(order_id)?;
-        let old_quantity = self.orders[position].quantity;
+        let old_quantity = self.orders[position].quantity();
         let delta = Quantity::new(new_quantity.get().abs_diff(old_quantity.get()));
 
         if new_quantity >= old_quantity {
-            self.total_quantity += delta;
+            self.total_quantity = add_quantities(self.total_quantity, delta)?;
         } else {
-            self.total_quantity -= delta;
+            self.total_quantity = sub_quantities(self.total_quantity, delta)?;
         }
 
-        self.orders[position].quantity = new_quantity;
+        self.orders[position].set_quantity(new_quantity);
 
         Ok(())
     }
@@ -75,9 +80,9 @@ impl VecL3BookLevel {
     ) -> Result<(), OrderBookError> {
         let position = self.find_position(order_id)?;
         self.orders[position].fill(fill_quantity)?;
-        self.total_quantity -= fill_quantity;
+        self.total_quantity = sub_quantities(self.total_quantity, fill_quantity)?;
 
-        if self.orders[position].quantity.is_zero() {
+        if self.orders[position].quantity().is_zero() {
             self.orders.remove(position);
         }
 
@@ -85,28 +90,28 @@ impl VecL3BookLevel {
     }
 }
 
-// ── Book Look Up ──────────────────────────────────────────────────────────────
+// ── Orders Look Up  ───────────────────────────────────────────────────────────
 
 impl VecL3BookLevel {
-    pub fn order(&self, order_id: OrderId) -> Result<Quantity, OrderBookError> {
-        let position = self.find_position(order_id)?;
+    pub fn order(&self, order_id: OrderId) -> Option<Quantity> {
+        let position = self.find_position(order_id).ok()?;
 
-        Ok(self.orders[position].quantity)
+        Some(self.orders[position].quantity())
     }
 
     pub fn top_order(&self) -> Option<(OrderId, Quantity)> {
         let first = self.orders.first()?;
 
-        Some((first.id, first.quantity))
+        Some((first.id(), first.quantity()))
     }
 
-    pub fn orders_at(&self) -> Vec<(OrderId, Quantity)> {
+    pub fn orders_at(&self) -> Option<Vec<(OrderId, Quantity)>> {
         let mut orders = Vec::with_capacity(self.orders.len());
         for order in &self.orders {
-            orders.push((order.id, order.quantity));
+            orders.push((order.id(), order.quantity()));
         }
 
-        orders
+        (!orders.is_empty()).then_some(orders)
     }
 }
 

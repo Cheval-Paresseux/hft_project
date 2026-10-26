@@ -19,5 +19,6 @@ pub enum OrderError {
 pub trait Order {
     fn id(&self) -> OrderId;
     fn quantity(&self) -> Quantity;
+    fn set_quantity(&mut self, quantity: Quantity);
     fn fill(&mut self, fill_quantity: Quantity) -> Result<(), OrderError>;
 }

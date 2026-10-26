@@ -1,8 +1,10 @@
 use super::level::VecL3BookLevel;
 
-use crate::{
-    errors::OrderBookError,
-    order::{LimitOrder, OrderId, OrderSide, Price, Quantity},
+use crate::level3::common::{add_quantities, OrderBookError};
+
+use types::order::{
+    fields::{OrderId, OrderSide, Price, Quantity},
+    orders::LimitOrder,
 };
 
 // ── Book Side ─────────────────────────────────────────────────────────────────
@@ -20,13 +22,6 @@ impl VecL3BookSide {
         }
     }
 
-    fn find_level_pos(&self, price: Price) -> usize {
-        match self.side {
-            OrderSide::Ask => self.levels.partition_point(|l| l.price < price),
-            OrderSide::Bid => self.levels.partition_point(|l| l.price > price),
-        }
-    }
-
     fn find_level(&self, price: Price) -> Result<usize, OrderBookError> {
         let position = self.find_level_pos(price);
 
@@ -34,6 +29,13 @@ impl VecL3BookSide {
             Ok(position)
         } else {
             Err(OrderBookError::PriceLevelNotFound { price })
+        }
+    }
+
+    fn find_level_pos(&self, price: Price) -> usize {
+        match self.side {
+            OrderSide::Ask => self.levels.partition_point(|l| l.price < price),
+            OrderSide::Bid => self.levels.partition_point(|l| l.price > price),
         }
     }
 
@@ -46,7 +48,11 @@ impl VecL3BookSide {
 
         position
     }
+}
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+impl VecL3BookSide {
     fn levels_up_to(&self, bound: Option<Price>) -> &[VecL3BookLevel] {
         let end = match (self.side, bound) {
             (OrderSide::Ask, Some(bound)) => {
@@ -69,7 +75,9 @@ impl VecL3BookSide {
         let mut quantity = Quantity::from(0);
 
         for (i, level) in self.levels.iter().enumerate() {
-            quantity += level.total_quantity;
+            let total_quantity =
+                (level.total_quantity + quantity).expect("total book quantity overflow");
+            quantity = total_quantity;
 
             if quantity >= target {
                 return &self.levels[..=i];
@@ -83,9 +91,9 @@ impl VecL3BookSide {
 // ── Book Mutations ────────────────────────────────────────────────────────────
 
 impl VecL3BookSide {
-    pub fn add_order(&mut self, order: LimitOrder) {
-        let position = self.get_or_create_level(order.price);
-        self.levels[position].add_order(order);
+    pub fn add_order(&mut self, order: LimitOrder) -> Result<(), OrderBookError> {
+        let position = self.get_or_create_level(order.limit());
+        self.levels[position].add_order(order)
     }
 
     pub fn cancel_order(
@@ -133,18 +141,18 @@ impl VecL3BookSide {
     }
 }
 
-// ── Book Look Up ──────────────────────────────────────────────────────────────
+// ── Orders Look Up  ───────────────────────────────────────────────────────────
 
 impl VecL3BookSide {
     pub fn order(
         &self,
         order_id: OrderId,
         order_price: Price,
-    ) -> Result<(OrderSide, Price, Quantity), OrderBookError> {
-        let position = self.find_level(order_price)?;
-
+    ) -> Option<(OrderSide, Price, Quantity)> {
+        let position = self.find_level(order_price).ok()?;
         let quantity = self.levels[position].order(order_id)?;
-        Ok((self.side, order_price, quantity))
+
+        Some((self.side, order_price, quantity))
     }
 
     pub fn top_order(&self) -> Option<(OrderId, Price, Quantity)> {
@@ -153,58 +161,66 @@ impl VecL3BookSide {
         Some((order_id, self.levels[0].price, quantity))
     }
 
-    pub fn orders_at(&self, price: Price) -> Result<Vec<(OrderId, Quantity)>, OrderBookError> {
-        let position = self.find_level(price)?;
+    pub fn orders_at(&self, price: Price) -> Option<Vec<(OrderId, Quantity)>> {
+        let position = self.find_level(price).ok()?;
 
-        Ok(self.levels[position].orders_at())
+        self.levels[position].orders_at()
     }
 
-    pub fn orders_up_to(&self, bound: Option<Price>) -> Vec<(OrderId, Price, Quantity)> {
+    pub fn orders_up_to(&self, bound: Option<Price>) -> Option<Vec<(OrderId, Price, Quantity)>> {
         let mut orders = Vec::new();
 
         for level in self.levels_up_to(bound) {
-            for (order_id, quantity) in level.orders_at() {
-                orders.push((order_id, level.price, quantity));
+            if let Some(level_orders) = level.orders_at() {
+                for (order_id, quantity) in level_orders {
+                    orders.push((order_id, level.price, quantity));
+                }
             }
         }
 
-        orders
+        (!orders.is_empty()).then_some(orders)
     }
 
     pub fn orders_up_to_quantity(
         &self,
         bound: Option<Quantity>,
-    ) -> Vec<(OrderId, Price, Quantity)> {
+    ) -> Option<Vec<(OrderId, Price, Quantity)>> {
         let mut orders = Vec::new();
 
         for level in self.levels_up_to_quantity(bound) {
-            for (order_id, quantity) in level.orders_at() {
-                orders.push((order_id, level.price, quantity));
+            if let Some(level_orders) = level.orders_at() {
+                for (order_id, quantity) in level_orders {
+                    orders.push((order_id, level.price, quantity));
+                }
             }
         }
 
-        orders
+        (!orders.is_empty()).then_some(orders)
     }
+}
 
+// ── Aggregation Look Up ───────────────────────────────────────────────────────
+
+impl VecL3BookSide {
     pub fn top_price(&self) -> Option<Price> {
         Some(self.levels.first()?.price)
     }
 
-    pub fn quantity_at(&self, price: Price) -> Quantity {
+    pub fn quantity_at(&self, price: Price) -> Option<Quantity> {
         match self.find_level(price) {
-            Ok(position) => self.levels[position].total_quantity,
-            Err(_) => 0.into(),
+            Ok(position) => Some(self.levels[position].total_quantity),
+            Err(_) => None,
         }
     }
 
-    pub fn quantity_up_to(&self, bound: Option<Price>) -> Quantity {
+    pub fn quantity_up_to(&self, bound: Option<Price>) -> Option<Quantity> {
         let mut total = Quantity::new(0);
 
         for level in self.levels_up_to(bound) {
-            total += level.total_quantity;
+            total = add_quantities(total, level.total_quantity).ok()?;
         }
 
-        total
+        Some(total)
     }
 }
 

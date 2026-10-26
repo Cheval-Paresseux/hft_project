@@ -1,9 +1,10 @@
 use super::side::VecL3BookSide;
 
-use crate::{
-    errors::OrderBookError,
-    level3::common::L3OrderBook,
-    order::{LimitOrder, OrderId, OrderSide, Price, Quantity},
+use crate::level3::common::{L3OrderBook, OrderBookError};
+
+use types::order::{
+    fields::{OrderId, OrderSide, Price, Quantity},
+    orders::{LimitOrder, Order},
 };
 
 use std::collections::HashMap;
@@ -37,10 +38,11 @@ impl VecL3OrderBook {
 impl L3OrderBook for VecL3OrderBook {
     // ── Book Mutations ────────────────────────────────────────────────────────────
 
-    fn add_order(&mut self, order: LimitOrder) {
-        self.orders_map.insert(order.id, (order.side, order.price));
+    fn add_order(&mut self, order: LimitOrder) -> Result<(), OrderBookError> {
+        self.orders_map
+            .insert(order.id(), (order.side(), order.limit()));
 
-        match order.side {
+        match order.side() {
             OrderSide::Bid => self.bid_side.add_order(order),
             OrderSide::Ask => self.ask_side.add_order(order),
         }
@@ -84,17 +86,17 @@ impl L3OrderBook for VecL3OrderBook {
             OrderSide::Ask => self.ask_side.fill_order(order_id, price, fill_quantity)?,
         }
 
-        if self.order(order_id).is_err() {
+        if self.order(order_id).is_none() {
             self.orders_map.remove(&order_id);
         }
 
         Ok(())
     }
 
-    // ── Book Look Up ──────────────────────────────────────────────────────────────
+    // ── Orders Look Up  ───────────────────────────────────────────────────────────
 
-    fn order(&self, order_id: OrderId) -> Result<(OrderSide, Price, Quantity), OrderBookError> {
-        let &(side, price) = self.find_order(order_id)?;
+    fn order(&self, order_id: OrderId) -> Option<(OrderSide, Price, Quantity)> {
+        let &(side, price) = self.find_order(order_id).ok()?;
 
         match side {
             OrderSide::Bid => self.bid_side.order(order_id, price),
@@ -109,11 +111,7 @@ impl L3OrderBook for VecL3OrderBook {
         }
     }
 
-    fn orders_at(
-        &self,
-        side: OrderSide,
-        price: Price,
-    ) -> Result<Vec<(OrderId, Quantity)>, OrderBookError> {
+    fn orders_at(&self, side: OrderSide, price: Price) -> Option<Vec<(OrderId, Quantity)>> {
         match side {
             OrderSide::Bid => self.bid_side.orders_at(price),
             OrderSide::Ask => self.ask_side.orders_at(price),
@@ -124,7 +122,7 @@ impl L3OrderBook for VecL3OrderBook {
         &self,
         side: OrderSide,
         bound: Option<Price>,
-    ) -> Vec<(OrderId, Price, Quantity)> {
+    ) -> Option<Vec<(OrderId, Price, Quantity)>> {
         match side {
             OrderSide::Bid => self.bid_side.orders_up_to(bound),
             OrderSide::Ask => self.ask_side.orders_up_to(bound),
@@ -135,12 +133,14 @@ impl L3OrderBook for VecL3OrderBook {
         &self,
         side: OrderSide,
         bound: Option<Quantity>,
-    ) -> Vec<(OrderId, Price, Quantity)> {
+    ) -> Option<Vec<(OrderId, Price, Quantity)>> {
         match side {
             OrderSide::Bid => self.bid_side.orders_up_to_quantity(bound),
             OrderSide::Ask => self.ask_side.orders_up_to_quantity(bound),
         }
     }
+
+    // ── Aggregation Look Up ───────────────────────────────────────────────────────
 
     fn top_price(&self, side: OrderSide) -> Option<Price> {
         match side {
@@ -149,14 +149,14 @@ impl L3OrderBook for VecL3OrderBook {
         }
     }
 
-    fn quantity_at(&self, side: OrderSide, price: Price) -> Quantity {
+    fn quantity_at(&self, side: OrderSide, price: Price) -> Option<Quantity> {
         match side {
             OrderSide::Bid => self.bid_side.quantity_at(price),
             OrderSide::Ask => self.ask_side.quantity_at(price),
         }
     }
 
-    fn quantity_up_to(&self, side: OrderSide, bound: Option<Price>) -> Quantity {
+    fn quantity_up_to(&self, side: OrderSide, bound: Option<Price>) -> Option<Quantity> {
         match side {
             OrderSide::Bid => self.bid_side.quantity_up_to(bound),
             OrderSide::Ask => self.ask_side.quantity_up_to(bound),
@@ -170,10 +170,19 @@ impl L3OrderBook for VecL3OrderBook {
 
 #[cfg(test)]
 mod tests {
+    use types::order::TimeInForce;
+
     use super::*;
 
     fn make_limit(id: u64, quantity: u64, side: OrderSide, price: u64) -> LimitOrder {
-        LimitOrder::new(id.into(), 0.into(), quantity.into(), side, price.into())
+        LimitOrder::new(
+            id.into(),
+            quantity.into(),
+            0.into(),
+            side,
+            price.into(),
+            TimeInForce::GoodTillCanceled,
+        )
     }
 
     #[test]

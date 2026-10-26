@@ -13,6 +13,10 @@ impl Quantity {
     pub fn get(self) -> u64 {
         self.0
     }
+
+    pub fn is_zero(&self) -> bool {
+        self.0 == 0
+    }
 }
 
 // ── Add & Sub Trait ───────────────────────────────────────────────────────────

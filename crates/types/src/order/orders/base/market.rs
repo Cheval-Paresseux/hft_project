@@ -58,6 +58,10 @@ impl Order for MarketOrder {
         self.quantity
     }
 
+    fn set_quantity(&mut self, quantity: Quantity) {
+        self.quantity = quantity;
+    }
+
     fn fill(&mut self, fill_quantity: Quantity) -> Result<(), OrderError> {
         let order_quantity = self.quantity();
 
