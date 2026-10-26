@@ -122,15 +122,16 @@ impl VecL3BookLevel {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::order::OrderSide;
+    use types::order::{orders::OrderError, OrderSide, TimeInForce};
 
     fn make_limit(id: u64, quantity: u64) -> LimitOrder {
         LimitOrder::new(
             id.into(),
-            0.into(),
             quantity.into(),
+            0.into(),
             OrderSide::Ask,
             100.into(),
+            TimeInForce::GoodTillCanceled,
         )
     }
 
@@ -163,18 +164,32 @@ mod tests {
     #[test]
     fn add_order() {
         let mut level = VecL3BookLevel::new(100.into());
-        level.add_order(make_limit(1, 10));
+
+        assert_eq!(level.add_order(make_limit(1, 10)), Ok(()));
+        assert_eq!(level.orders.len(), 1);
+        assert_eq!(level.orders[0].id(), 1.into());
+        assert_eq!(level.orders[0].quantity(), 10.into());
+        assert_eq!(level.total_quantity, 10.into());
+    }
+
+    #[test]
+    fn add_order_overflow_leaves_level_unchanged() {
+        let mut level = VecL3BookLevel::new(100.into());
+        level.add_order(make_limit(1, u64::MAX)).unwrap();
+
+        assert_eq!(
+            level.add_order(make_limit(2, 1)),
+            Err(OrderBookError::QuantityOverflow)
+        );
 
         assert_eq!(level.orders.len(), 1);
-        assert_eq!(level.orders[0].id, 1.into());
-        assert_eq!(level.orders[0].quantity, 10.into());
-        assert_eq!(level.total_quantity, 10.into());
+        assert_eq!(level.total_quantity, u64::MAX.into());
     }
 
     #[test]
     fn cancel_order() {
         let mut level = VecL3BookLevel::new(100.into());
-        level.add_order(make_limit(1, 10));
+        level.add_order(make_limit(1, 10)).unwrap();
 
         assert_eq!(level.cancel_order(1.into()), Ok(()));
         assert_eq!(level.total_quantity, 0.into());
@@ -184,56 +199,79 @@ mod tests {
     #[test]
     fn modify_order() {
         let mut level = VecL3BookLevel::new(100.into());
-        level.add_order(make_limit(1, 10));
+        level.add_order(make_limit(1, 10)).unwrap();
 
         assert_eq!(level.modify_order(1.into(), 23.into()), Ok(()));
-        assert_eq!(level.orders[0].quantity, 23.into());
+        assert_eq!(level.orders[0].quantity(), 23.into());
         assert_eq!(level.total_quantity, 23.into());
+
+        assert_eq!(level.modify_order(1.into(), 4.into()), Ok(()));
+        assert_eq!(level.orders[0].quantity(), 4.into());
+        assert_eq!(level.total_quantity, 4.into());
     }
 
     #[test]
     fn fill_order() {
         let mut level = VecL3BookLevel::new(100.into());
-        level.add_order(make_limit(1, 10));
+        level.add_order(make_limit(1, 10)).unwrap();
 
         assert_eq!(level.fill_order(1.into(), 4.into()), Ok(()));
-        assert_eq!(level.orders[0].quantity, 6.into());
+        assert_eq!(level.orders[0].quantity(), 6.into());
         assert_eq!(level.total_quantity, 6.into());
 
         assert_eq!(
             level.fill_order(1.into(), 7.into()),
-            Err(OrderBookError::FillExceedsOrderQuantity {
-                order_id: 1.into(),
-                order_quantity: 6.into(),
-                fill_quantity: 7.into(),
-            })
+            Err(OrderBookError::OrderError(
+                OrderError::FillExceedsOrderQuantity {
+                    order_id: 1.into(),
+                    order_quantity: 6.into(),
+                    fill_quantity: 7.into(),
+                }
+            ))
         );
+        assert_eq!(level.orders[0].quantity(), 6.into());
+        assert_eq!(level.total_quantity, 6.into());
+    }
+
+    #[test]
+    fn fully_filled_order_is_removed() {
+        let mut level = VecL3BookLevel::new(100.into());
+        level.add_order(make_limit(1, 10)).unwrap();
+
+        assert_eq!(level.fill_order(1.into(), 10.into()), Ok(()));
+
+        assert!(level.is_empty());
+        assert_eq!(level.total_quantity, 0.into());
+        assert_eq!(level.order(1.into()), None);
     }
 
     #[test]
     fn order() {
         let mut level = VecL3BookLevel::new(100.into());
-        level.add_order(make_limit(1, 10));
+        level.add_order(make_limit(1, 10)).unwrap();
 
-        assert_eq!(level.order(1.into()), Ok(10.into()));
+        assert_eq!(level.order(1.into()), Some(10.into()));
+        assert_eq!(level.order(42.into()), None);
     }
 
     #[test]
     fn top_order() {
         let mut level = VecL3BookLevel::new(100.into());
-        level.add_order(make_limit(1, 10));
-        level.add_order(make_limit(2, 5));
+        level.add_order(make_limit(1, 10)).unwrap();
+        level.add_order(make_limit(2, 5)).unwrap();
 
         assert_eq!(level.top_order(), Some((1.into(), 10.into())));
+        assert_eq!(VecL3BookLevel::new(100.into()).top_order(), None);
     }
 
     #[test]
     fn orders_at() {
         let mut level = VecL3BookLevel::new(100.into());
-        level.add_order(make_limit(1, 10));
-        level.add_order(make_limit(2, 5));
+        level.add_order(make_limit(1, 10)).unwrap();
+        level.add_order(make_limit(2, 5)).unwrap();
 
         let expected_result = vec![(1.into(), 10.into()), (2.into(), 5.into())];
-        assert_eq!(level.orders_at(), expected_result);
+        assert_eq!(level.orders_at(), Some(expected_result));
+        assert_eq!(VecL3BookLevel::new(100.into()).orders_at(), None);
     }
 }

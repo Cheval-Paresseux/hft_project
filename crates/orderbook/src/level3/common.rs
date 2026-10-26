@@ -15,6 +15,9 @@ pub enum OrderBookError {
     #[error("order with id {order_id:?} not found")]
     OrderIdNotFound { order_id: OrderId },
 
+    #[error("order with id {order_id:?} already exists")]
+    OrderIdAlreadyExists { order_id: OrderId },
+
     #[error("price level {price:?} not found")]
     PriceLevelNotFound { price: Price },
 
