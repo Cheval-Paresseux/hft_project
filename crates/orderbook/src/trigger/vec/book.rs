@@ -22,9 +22,18 @@ impl<T, O> VecTriggerBook<T, O> {
 }
 
 impl<T: Ord, O: Order> VecTriggerBook<T, O> {
-    fn find_threshold_pos(&self, threshold: &T) -> usize {
+    fn find_triggered_end(&self, trigger: &T) -> usize {
+        match self.condition {
+            TriggerCondition::AtOrAbove => self.orders.partition_point(|o| o.0 >= *trigger),
+
+            TriggerCondition::AtOrBelow => self.orders.partition_point(|o| o.0 <= *trigger),
+        }
+    }
+
+    fn find_threshold_insert_pos(&self, threshold: &T) -> usize {
         match self.condition {
             TriggerCondition::AtOrAbove => self.orders.partition_point(|o| o.0 > *threshold),
+
             TriggerCondition::AtOrBelow => self.orders.partition_point(|o| o.0 < *threshold),
         }
     }
@@ -49,7 +58,7 @@ impl<T: Ord, O: Order> TriggerBook<T, O> for VecTriggerBook<T, O> {
             });
         }
 
-        let position = self.find_threshold_pos(&threshold);
+        let position = self.find_threshold_insert_pos(&threshold);
         self.orders.insert(position, (threshold, order));
 
         Ok(())
@@ -76,7 +85,7 @@ impl<T: Ord, O: Order> TriggerBook<T, O> for VecTriggerBook<T, O> {
     }
 
     fn trigger_orders(&mut self, trigger: &T) -> Vec<(T, O)> {
-        let end = self.find_threshold_pos(trigger);
+        let end = self.find_triggered_end(trigger);
 
         self.orders.drain(..end).collect()
     }
@@ -99,16 +108,18 @@ impl<T: Ord, O: Order> TriggerBook<T, O> for VecTriggerBook<T, O> {
     // ── Orders Look Up ────────────────────────────────────────────────────────
 
     fn orders_at(&self, threshold: &T) -> Vec<(&T, &O)> {
-        self.orders
+        let start = self.find_threshold_insert_pos(threshold);
+
+        self.orders[start..]
             .iter()
-            .filter(|(t, _)| t == threshold)
+            .take_while(|(t, _)| t == threshold)
             .map(|(t, order)| (t, order))
             .collect()
     }
 
     fn orders_up_to(&self, bound: Option<&T>) -> Vec<(&T, &O)> {
         let end = match bound {
-            Some(bound) => self.find_threshold_pos(bound),
+            Some(bound) => self.find_threshold_insert_pos(bound),
             None => self.orders.len(),
         };
 
@@ -149,7 +160,7 @@ impl<T: Ord, O: Order> TriggerBook<T, O> for VecTriggerBook<T, O> {
     // ── Threshold Lookups ──────────────────────────────────────────
 
     fn top_threshold(&self) -> Option<&T> {
-        Some(&self.orders.first()?.0)
+        self.orders.first().map(|(threshold, _)| threshold)
     }
 
     fn quantity_at(&self, threshold: &T) -> Option<Quantity> {
@@ -163,7 +174,7 @@ impl<T: Ord, O: Order> TriggerBook<T, O> for VecTriggerBook<T, O> {
 
     fn quantity_up_to(&self, bound: Option<&T>) -> Option<Quantity> {
         let end = match bound {
-            Some(bound) => self.find_threshold_pos(bound),
+            Some(bound) => self.find_threshold_insert_pos(bound),
             None => self.orders.len(),
         };
 
