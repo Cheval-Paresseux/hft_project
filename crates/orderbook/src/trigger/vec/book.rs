@@ -7,6 +7,7 @@ use types::order::{
 
 // ── Vec Trigger Book ──────────────────────────────────────────────────────────
 
+#[derive(Clone, Debug)]
 pub struct VecTriggerBook<T, O> {
     condition: TriggerCondition,
     orders: Vec<(T, O)>,
@@ -259,4 +260,293 @@ impl<T: Ord, O: Order> TriggerBook<T, O> for VecTriggerBook<T, O> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use types::order::{fields::Price, orders::RestingLimitOrder};
+
+    fn make_order(id: u64, quantity: u64) -> RestingLimitOrder {
+        RestingLimitOrder::new(id.into(), quantity.into(), 0.into())
+    }
+
+    fn price(value: u64) -> Price {
+        Price::new(value)
+    }
+
+    fn make_book(condition: TriggerCondition) -> VecTriggerBook<Price, RestingLimitOrder> {
+        VecTriggerBook::new(condition)
+    }
+
+    fn sample_book(condition: TriggerCondition) -> VecTriggerBook<Price, RestingLimitOrder> {
+        let mut book = make_book(condition);
+
+        book.add_order(price(100), make_order(1, 5)).unwrap();
+        book.add_order(price(105), make_order(2, 8)).unwrap();
+        book.add_order(price(100), make_order(3, 7)).unwrap();
+        book.add_order(price(95), make_order(4, 10)).unwrap();
+
+        book
+    }
+
+    fn ref_entries(orders: &[(&Price, &RestingLimitOrder)]) -> Vec<(u64, u64)> {
+        orders
+            .iter()
+            .map(|(threshold, order)| (threshold.get(), order.id().get()))
+            .collect()
+    }
+
+    fn owned_entries(orders: &[(Price, RestingLimitOrder)]) -> Vec<(u64, u64)> {
+        orders
+            .iter()
+            .map(|(threshold, order)| (threshold.get(), order.id().get()))
+            .collect()
+    }
+
+    #[test]
+    fn add_order() {
+        let mut book = make_book(TriggerCondition::AtOrAbove);
+
+        book.add_order(price(105), make_order(1, 10)).unwrap();
+        book.add_order(price(100), make_order(2, 5)).unwrap();
+        book.add_order(price(100), make_order(3, 7)).unwrap();
+        book.add_order(price(95), make_order(4, 1)).unwrap();
+
+        assert_eq!(
+            owned_entries(&book.orders),
+            vec![(95, 4), (100, 2), (100, 3), (105, 1)]
+        );
+
+        assert_eq!(
+            book.add_order(price(110), make_order(2, 1)),
+            Err(TriggerBookError::OrderIdAlreadyExists { order_id: 2.into() })
+        );
+        assert_eq!(book.orders.len(), 4);
+    }
+
+    #[test]
+    fn cancel_order() {
+        let mut book = sample_book(TriggerCondition::AtOrAbove);
+
+        assert_eq!(book.cancel_order(1.into()), Ok(()));
+        assert_eq!(
+            owned_entries(&book.orders),
+            vec![(95, 4), (100, 3), (105, 2)]
+        );
+
+        assert_eq!(
+            book.cancel_order(42.into()),
+            Err(TriggerBookError::OrderIdNotFound {
+                order_id: 42.into()
+            })
+        );
+    }
+
+    #[test]
+    fn modify_order() {
+        let mut book = sample_book(TriggerCondition::AtOrAbove);
+
+        assert_eq!(book.modify_order(1.into(), 4.into()), Ok(()));
+        assert_eq!(book.orders[1].1.quantity(), 4.into());
+
+        assert_eq!(
+            book.modify_order(42.into(), 1.into()),
+            Err(TriggerBookError::OrderIdNotFound {
+                order_id: 42.into()
+            })
+        );
+    }
+
+    #[test]
+    fn trigger_orders() {
+        let mut above = sample_book(TriggerCondition::AtOrAbove);
+
+        let triggered = above.trigger_orders(&price(100));
+        assert_eq!(owned_entries(&triggered), vec![(95, 4), (100, 1), (100, 3)]);
+        assert_eq!(owned_entries(&above.orders), vec![(105, 2)]);
+        assert!(above.trigger_orders(&price(90)).is_empty());
+
+        let triggered = above.trigger_orders(&price(110));
+        assert_eq!(owned_entries(&triggered), vec![(105, 2)]);
+
+        let mut below = sample_book(TriggerCondition::AtOrBelow);
+
+        let triggered = below.trigger_orders(&price(100));
+        assert_eq!(
+            owned_entries(&triggered),
+            vec![(100, 1), (100, 3), (105, 2)]
+        );
+        assert_eq!(owned_entries(&below.orders), vec![(95, 4)]);
+        assert!(below.trigger_orders(&price(110)).is_empty());
+
+        let triggered = below.trigger_orders(&price(90));
+        assert_eq!(owned_entries(&triggered), vec![(95, 4)]);
+    }
+
+    #[test]
+    fn order() {
+        let book = sample_book(TriggerCondition::AtOrAbove);
+
+        let (threshold, order) = book.order(3.into()).unwrap();
+        assert_eq!(
+            (threshold.get(), order.id().get(), order.quantity().get()),
+            (100, 3, 7)
+        );
+
+        assert!(book.order(42.into()).is_none());
+    }
+
+    #[test]
+    fn top_order() {
+        let mut above = sample_book(TriggerCondition::AtOrAbove);
+        above.add_order(price(95), make_order(5, 1)).unwrap();
+
+        let (threshold, order) = above.top_order().unwrap();
+        assert_eq!((threshold.get(), order.id().get()), (95, 4));
+
+        let mut below = sample_book(TriggerCondition::AtOrBelow);
+        below.add_order(price(105), make_order(6, 1)).unwrap();
+
+        let (threshold, order) = below.top_order().unwrap();
+        assert_eq!((threshold.get(), order.id().get()), (105, 2));
+
+        assert!(make_book(TriggerCondition::AtOrAbove).top_order().is_none());
+        assert!(make_book(TriggerCondition::AtOrBelow).top_order().is_none());
+    }
+
+    #[test]
+    fn orders_at() {
+        let book = sample_book(TriggerCondition::AtOrAbove);
+
+        assert_eq!(
+            ref_entries(&book.orders_at(&price(100))),
+            vec![(100, 1), (100, 3)]
+        );
+        assert_eq!(ref_entries(&book.orders_at(&price(105))), vec![(105, 2)]);
+        assert!(book.orders_at(&price(99)).is_empty());
+    }
+
+    #[test]
+    fn orders_up_to() {
+        let above = sample_book(TriggerCondition::AtOrAbove);
+
+        assert_eq!(
+            ref_entries(&above.orders_up_to(Some(&price(100)))),
+            vec![(95, 4), (100, 1), (100, 3)]
+        );
+        assert!(above.orders_up_to(Some(&price(94))).is_empty());
+        assert_eq!(
+            ref_entries(&above.orders_up_to(None)),
+            vec![(95, 4), (100, 1), (100, 3), (105, 2)]
+        );
+
+        let below = sample_book(TriggerCondition::AtOrBelow);
+
+        assert_eq!(
+            ref_entries(&below.orders_up_to(Some(&price(100)))),
+            vec![(100, 1), (100, 3), (105, 2)]
+        );
+        assert!(below.orders_up_to(Some(&price(110))).is_empty());
+        assert_eq!(
+            ref_entries(&below.orders_up_to(Some(&price(94)))),
+            vec![(95, 4), (100, 1), (100, 3), (105, 2)]
+        );
+        assert_eq!(
+            ref_entries(&below.orders_up_to(None)),
+            vec![(95, 4), (100, 1), (100, 3), (105, 2)]
+        );
+    }
+
+    #[test]
+    fn orders_up_to_quantity() {
+        let above = sample_book(TriggerCondition::AtOrAbove);
+
+        assert_eq!(
+            ref_entries(&above.orders_up_to_quantity(None)),
+            vec![(95, 4), (100, 1), (100, 3), (105, 2)]
+        );
+        assert_eq!(
+            ref_entries(&above.orders_up_to_quantity(Some(10.into()))),
+            vec![(95, 4)]
+        );
+        assert_eq!(
+            ref_entries(&above.orders_up_to_quantity(Some(12.into()))),
+            vec![(95, 4), (100, 1)]
+        );
+        assert_eq!(
+            ref_entries(&above.orders_up_to_quantity(Some(22.into()))),
+            vec![(95, 4), (100, 1), (100, 3)]
+        );
+        assert_eq!(
+            ref_entries(&above.orders_up_to_quantity(Some(100.into()))),
+            vec![(95, 4), (100, 1), (100, 3), (105, 2)]
+        );
+
+        let below = sample_book(TriggerCondition::AtOrBelow);
+
+        assert_eq!(
+            ref_entries(&below.orders_up_to_quantity(None)),
+            vec![(105, 2), (100, 1), (100, 3), (95, 4)]
+        );
+        assert_eq!(
+            ref_entries(&below.orders_up_to_quantity(Some(8.into()))),
+            vec![(105, 2)]
+        );
+        assert_eq!(
+            ref_entries(&below.orders_up_to_quantity(Some(11.into()))),
+            vec![(105, 2), (100, 1)]
+        );
+        assert_eq!(
+            ref_entries(&below.orders_up_to_quantity(Some(20.into()))),
+            vec![(105, 2), (100, 1), (100, 3)]
+        );
+        assert_eq!(
+            ref_entries(&below.orders_up_to_quantity(Some(21.into()))),
+            vec![(105, 2), (100, 1), (100, 3), (95, 4)]
+        );
+    }
+
+    #[test]
+    fn top_threshold() {
+        let above = sample_book(TriggerCondition::AtOrAbove);
+        let below = sample_book(TriggerCondition::AtOrBelow);
+
+        assert_eq!(above.top_threshold(), Some(&price(95)));
+        assert_eq!(below.top_threshold(), Some(&price(105)));
+
+        assert_eq!(make_book(TriggerCondition::AtOrAbove).top_threshold(), None);
+        assert_eq!(make_book(TriggerCondition::AtOrBelow).top_threshold(), None);
+    }
+
+    #[test]
+    fn quantity_at() {
+        let book = sample_book(TriggerCondition::AtOrAbove);
+
+        assert_eq!(book.quantity_at(&price(95)), Some(10.into()));
+        assert_eq!(book.quantity_at(&price(100)), Some(12.into()));
+        assert_eq!(book.quantity_at(&price(105)), Some(8.into()));
+        assert_eq!(book.quantity_at(&price(99)), None);
+        assert_eq!(
+            make_book(TriggerCondition::AtOrAbove).quantity_at(&price(100)),
+            None
+        );
+    }
+
+    #[test]
+    fn quantity_up_to() {
+        let above = sample_book(TriggerCondition::AtOrAbove);
+
+        assert_eq!(above.quantity_up_to(Some(&price(100))), Some(22.into()));
+        assert_eq!(above.quantity_up_to(Some(&price(94))), Some(0.into()));
+        assert_eq!(above.quantity_up_to(Some(&price(110))), Some(30.into()));
+        assert_eq!(above.quantity_up_to(None), Some(30.into()));
+
+        let below = sample_book(TriggerCondition::AtOrBelow);
+
+        assert_eq!(below.quantity_up_to(Some(&price(100))), Some(20.into()));
+        assert_eq!(below.quantity_up_to(Some(&price(110))), Some(0.into()));
+        assert_eq!(below.quantity_up_to(Some(&price(94))), Some(30.into()));
+        assert_eq!(below.quantity_up_to(None), Some(30.into()));
+
+        assert_eq!(
+            make_book(TriggerCondition::AtOrBelow).quantity_up_to(None),
+            Some(0.into())
+        );
+    }
 }
