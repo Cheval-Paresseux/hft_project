@@ -2,7 +2,7 @@ use super::stop_limit::StopLimitOrder;
 
 use crate::order::{
     fields::{OrderId, OrderSide, Price, Quantity, TimeInForce, Timestamp},
-    orders::{Order, OrderError},
+    orders::{IncomingOrder, Order, OrderError},
 };
 
 // ── Limit Order ───────────────────────────────────────────────────────────────
@@ -12,9 +12,10 @@ pub struct LimitOrder {
     id: OrderId,
     quantity: Quantity,
 
-    timestamp: Timestamp,
     side: OrderSide,
     limit: Price,
+
+    timestamp: Timestamp,
     tif: TimeInForce,
 }
 
@@ -39,14 +40,6 @@ impl LimitOrder {
 
     pub fn timestamp(&self) -> Timestamp {
         self.timestamp
-    }
-
-    pub fn side(&self) -> OrderSide {
-        self.side
-    }
-
-    pub fn limit(&self) -> Price {
-        self.limit
     }
 
     pub fn tif(&self) -> TimeInForce {
@@ -82,6 +75,18 @@ impl Order for LimitOrder {
         self.quantity = new_quantity;
 
         Ok(())
+    }
+}
+
+// ── Incoming Order Trait ──────────────────────────────────────────────────────
+
+impl IncomingOrder for LimitOrder {
+    fn side(&self) -> OrderSide {
+        self.side
+    }
+
+    fn limit(&self) -> Price {
+        self.limit
     }
 }
 

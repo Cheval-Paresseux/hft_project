@@ -1,4 +1,4 @@
-use crate::order::fields::{OrderId, Quantity};
+use crate::order::fields::{OrderId, OrderSide, Price, Quantity};
 
 use thiserror::Error;
 
@@ -22,4 +22,11 @@ pub trait Order {
 
     fn set_quantity(&mut self, quantity: Quantity);
     fn fill(&mut self, fill_quantity: Quantity) -> Result<(), OrderError>;
+}
+
+// ── Incoming Order ────────────────────────────────────────────────────────────
+
+pub trait IncomingOrder: Order {
+    fn side(&self) -> OrderSide;
+    fn limit(&self) -> Price;
 }
