@@ -90,7 +90,7 @@ impl VecL3BookLevel {
     }
 }
 
-// ── Orders Look Up  ───────────────────────────────────────────────────────────
+// ── Get Order ─────────────────────────────────────────────────────────────────
 
 impl VecL3BookLevel {
     pub fn order(&self, order_id: OrderId) -> Option<Quantity> {
@@ -104,7 +104,11 @@ impl VecL3BookLevel {
 
         Some((first.id(), first.quantity()))
     }
+}
 
+// ── Orders Look Up  ───────────────────────────────────────────────────────────
+
+impl VecL3BookLevel {
     pub fn orders_at(&self) -> Option<Vec<(OrderId, Quantity)>> {
         let mut orders = Vec::with_capacity(self.orders.len());
         for order in &self.orders {

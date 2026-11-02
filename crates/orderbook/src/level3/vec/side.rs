@@ -139,7 +139,7 @@ impl VecL3BookSide {
     }
 }
 
-// ── Orders Look Up  ───────────────────────────────────────────────────────────
+// ── Get Order ─────────────────────────────────────────────────────────────────
 
 impl VecL3BookSide {
     pub fn order(
@@ -158,7 +158,11 @@ impl VecL3BookSide {
 
         Some((order_id, self.levels[0].price, quantity))
     }
+}
 
+// ── Orders Look Up  ───────────────────────────────────────────────────────────
+
+impl VecL3BookSide {
     pub fn orders_at(&self, price: Price) -> Option<Vec<(OrderId, Quantity)>> {
         let position = self.find_level(price).ok()?;
 

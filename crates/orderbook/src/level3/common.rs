@@ -38,7 +38,7 @@ pub fn sub_quantities(rhs: Quantity, lhs: Quantity) -> Result<Quantity, OrderBoo
 // ── L3 Order Book  ────────────────────────────────────────────────────────────
 
 pub trait L3OrderBook: Default {
-    // ── Book Mutations ────────────────────────────────────────────────────────────
+    // ── Book Mutations ────────────────────────────────────────────────────────
 
     fn add_order(&mut self, order: LimitOrder) -> Result<(), OrderBookError>;
     fn cancel_order(&mut self, order_id: OrderId) -> Result<(), OrderBookError>;
@@ -53,10 +53,13 @@ pub trait L3OrderBook: Default {
         fill_quantity: Quantity,
     ) -> Result<(), OrderBookError>;
 
-    // ── Orders Look Up  ───────────────────────────────────────────────────────────
+    // ── Get Order ─────────────────────────────────────────────────────────────
 
     fn order(&self, order_id: OrderId) -> Option<(OrderSide, Price, Quantity)>;
     fn top_order(&self, side: OrderSide) -> Option<(OrderId, Price, Quantity)>;
+
+    // ── Orders Look Up ────────────────────────────────────────────────────────
+
     fn orders_at(&self, side: OrderSide, price: Price) -> Option<Vec<(OrderId, Quantity)>>;
     fn orders_up_to(
         &self,
@@ -69,7 +72,7 @@ pub trait L3OrderBook: Default {
         bound: Option<Quantity>,
     ) -> Option<Vec<(OrderId, Price, Quantity)>>;
 
-    // ── Aggregation Look Up ───────────────────────────────────────────────────────
+    // ── Aggregation Look Up ───────────────────────────────────────────────────
 
     fn top_price(&self, side: OrderSide) -> Option<Price>;
     fn quantity_at(&self, side: OrderSide, price: Price) -> Option<Quantity>;

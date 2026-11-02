@@ -36,7 +36,7 @@ impl VecL3OrderBook {
 }
 
 impl L3OrderBook for VecL3OrderBook {
-    // ── Book Mutations ────────────────────────────────────────────────────────────
+    // ── Book Mutations ────────────────────────────────────────────────────────
 
     fn add_order(&mut self, order: LimitOrder) -> Result<(), OrderBookError> {
         if self.orders_map.contains_key(&order.id()) {
@@ -101,7 +101,7 @@ impl L3OrderBook for VecL3OrderBook {
         Ok(())
     }
 
-    // ── Orders Look Up  ───────────────────────────────────────────────────────────
+    // ── Get Order ─────────────────────────────────────────────────────────────
 
     fn order(&self, order_id: OrderId) -> Option<(OrderSide, Price, Quantity)> {
         let &(side, price) = self.find_order(order_id).ok()?;
@@ -118,6 +118,8 @@ impl L3OrderBook for VecL3OrderBook {
             OrderSide::Ask => self.ask_side.top_order(),
         }
     }
+
+    // ── Orders Look Up ────────────────────────────────────────────────────────
 
     fn orders_at(&self, side: OrderSide, price: Price) -> Option<Vec<(OrderId, Quantity)>> {
         match side {
@@ -148,7 +150,7 @@ impl L3OrderBook for VecL3OrderBook {
         }
     }
 
-    // ── Aggregation Look Up ───────────────────────────────────────────────────────
+    // ── Aggregation Look Up ───────────────────────────────────────────────────
 
     fn top_price(&self, side: OrderSide) -> Option<Price> {
         match side {

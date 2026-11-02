@@ -60,7 +60,7 @@ pub trait TriggerBook<T: Ord, O: Order> {
     fn orders_up_to(&self, bound: Option<&T>) -> Vec<(&T, &O)>;
     fn orders_up_to_quantity(&self, bound: Option<Quantity>) -> Vec<(&T, &O)>;
 
-    // ── Threshold Lookups ──────────────────────────────────────────
+    // ── Threshold Lookups ─────────────────────────────────────────────────────
 
     fn top_threshold(&self) -> Option<&T>;
     fn quantity_at(&self, threshold: &T) -> Option<Quantity>;
