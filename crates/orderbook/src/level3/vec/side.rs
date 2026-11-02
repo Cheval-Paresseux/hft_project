@@ -1,20 +1,20 @@
 use super::level::VecL3BookLevel;
 
-use crate::level3::common::{OrderBookError, add_quantities};
+use crate::level3::common::{add_quantities, OrderBookError};
 
 use types::order::{
     fields::{OrderId, OrderSide, Price, Quantity},
-    orders::LimitOrder,
+    orders::{IncomingOrder, Order},
 };
 
 // ── Book Side ─────────────────────────────────────────────────────────────────
 
-pub struct VecL3BookSide {
+pub struct VecL3BookSide<R> {
     pub side: OrderSide,
-    levels: Vec<VecL3BookLevel>,
+    levels: Vec<VecL3BookLevel<R>>,
 }
 
-impl VecL3BookSide {
+impl<R> VecL3BookSide<R> {
     pub fn new(side: OrderSide) -> Self {
         Self {
             side,
@@ -52,8 +52,8 @@ impl VecL3BookSide {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-impl VecL3BookSide {
-    fn levels_up_to(&self, bound: Option<Price>) -> &[VecL3BookLevel] {
+impl<R> VecL3BookSide<R> {
+    fn levels_up_to(&self, bound: Option<Price>) -> &[VecL3BookLevel<R>] {
         let end = match (self.side, bound) {
             (OrderSide::Ask, Some(bound)) => {
                 self.levels.partition_point(|level| level.price <= bound)
@@ -67,7 +67,7 @@ impl VecL3BookSide {
         &self.levels[..end]
     }
 
-    fn levels_up_to_quantity(&self, target: Option<Quantity>) -> Option<&[VecL3BookLevel]> {
+    fn levels_up_to_quantity(&self, target: Option<Quantity>) -> Option<&[VecL3BookLevel<R>]> {
         let Some(target) = target else {
             return Some(&self.levels);
         };
@@ -88,8 +88,12 @@ impl VecL3BookSide {
 
 // ── Book Mutations ────────────────────────────────────────────────────────────
 
-impl VecL3BookSide {
-    pub fn add_order(&mut self, order: LimitOrder) -> Result<(), OrderBookError> {
+impl<R: Order> VecL3BookSide<R> {
+    pub fn add_order<I>(&mut self, order: I) -> Result<(), OrderBookError>
+    where
+        I: IncomingOrder,
+        R: From<I>,
+    {
         let position = self.get_or_create_level(order.limit());
         self.levels[position].add_order(order)
     }
@@ -141,7 +145,7 @@ impl VecL3BookSide {
 
 // ── Get Order ─────────────────────────────────────────────────────────────────
 
-impl VecL3BookSide {
+impl<R: Order> VecL3BookSide<R> {
     pub fn order(
         &self,
         order_id: OrderId,
@@ -162,7 +166,7 @@ impl VecL3BookSide {
 
 // ── Orders Look Up  ───────────────────────────────────────────────────────────
 
-impl VecL3BookSide {
+impl<R: Order> VecL3BookSide<R> {
     pub fn orders_at(&self, price: Price) -> Option<Vec<(OrderId, Quantity)>> {
         let position = self.find_level(price).ok()?;
 
@@ -203,7 +207,7 @@ impl VecL3BookSide {
 
 // ── Aggregation Look Up ───────────────────────────────────────────────────────
 
-impl VecL3BookSide {
+impl<R> VecL3BookSide<R> {
     pub fn top_price(&self) -> Option<Price> {
         Some(self.levels.first()?.price)
     }
@@ -233,7 +237,7 @@ impl VecL3BookSide {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use types::order::TimeInForce;
+    use types::order::{LimitOrder, RestingLimitOrder, TimeInForce};
 
     fn make_limit(id: u64, side: OrderSide, price: u64) -> LimitOrder {
         LimitOrder::new(
@@ -246,9 +250,13 @@ mod tests {
         )
     }
 
+    fn side(side: OrderSide) -> VecL3BookSide<RestingLimitOrder> {
+        VecL3BookSide::new(side)
+    }
+
     #[test]
     fn unknown_order_errors() {
-        let mut side = VecL3BookSide::new(OrderSide::Ask);
+        let mut side = side(OrderSide::Ask);
 
         assert_eq!(
             side.cancel_order(1.into(), 100.into()),
@@ -287,8 +295,8 @@ mod tests {
 
     #[test]
     fn add_order() {
-        let mut asks = VecL3BookSide::new(OrderSide::Ask);
-        let mut bids = VecL3BookSide::new(OrderSide::Bid);
+        let mut asks = side(OrderSide::Ask);
+        let mut bids = side(OrderSide::Bid);
 
         for (id, price) in [(1, 100), (2, 110), (3, 105)] {
             asks.add_order(make_limit(id, OrderSide::Ask, price))
@@ -306,7 +314,7 @@ mod tests {
 
     #[test]
     fn cancel_order() {
-        let mut side = VecL3BookSide::new(OrderSide::Ask);
+        let mut side = side(OrderSide::Ask);
         side.add_order(make_limit(1, OrderSide::Ask, 100)).unwrap();
         side.add_order(make_limit(2, OrderSide::Ask, 100)).unwrap();
 
@@ -319,7 +327,7 @@ mod tests {
 
     #[test]
     fn modify_order() {
-        let mut side = VecL3BookSide::new(OrderSide::Ask);
+        let mut side = side(OrderSide::Ask);
         side.add_order(make_limit(1, OrderSide::Ask, 100)).unwrap();
 
         assert_eq!(side.modify_order(1.into(), 100.into(), 5.into()), Ok(()));
@@ -328,7 +336,7 @@ mod tests {
 
     #[test]
     fn fill_order() {
-        let mut side = VecL3BookSide::new(OrderSide::Ask);
+        let mut side = side(OrderSide::Ask);
         side.add_order(make_limit(1, OrderSide::Ask, 100)).unwrap();
 
         assert_eq!(side.fill_order(1.into(), 100.into(), 1.into()), Ok(()));
@@ -338,7 +346,7 @@ mod tests {
 
     #[test]
     fn order() {
-        let mut asks = VecL3BookSide::new(OrderSide::Ask);
+        let mut asks = side(OrderSide::Ask);
 
         asks.add_order(make_limit(1, OrderSide::Ask, 100)).unwrap();
 
@@ -350,8 +358,8 @@ mod tests {
 
     #[test]
     fn top_order() {
-        let mut asks = VecL3BookSide::new(OrderSide::Ask);
-        let mut bids = VecL3BookSide::new(OrderSide::Bid);
+        let mut asks = side(OrderSide::Ask);
+        let mut bids = side(OrderSide::Bid);
 
         asks.add_order(make_limit(1, OrderSide::Ask, 100)).unwrap();
         asks.add_order(make_limit(2, OrderSide::Ask, 105)).unwrap();
@@ -360,12 +368,12 @@ mod tests {
 
         assert_eq!(asks.top_order(), Some((1.into(), 100.into(), 1.into())));
         assert_eq!(bids.top_order(), Some((3.into(), 100.into(), 1.into())));
-        assert_eq!(VecL3BookSide::new(OrderSide::Ask).top_order(), None);
+        assert_eq!(side(OrderSide::Ask).top_order(), None);
     }
 
     #[test]
     fn orders_at() {
-        let mut asks = VecL3BookSide::new(OrderSide::Ask);
+        let mut asks = side(OrderSide::Ask);
 
         asks.add_order(make_limit(1, OrderSide::Ask, 100)).unwrap();
         asks.add_order(make_limit(2, OrderSide::Ask, 100)).unwrap();
@@ -377,8 +385,8 @@ mod tests {
 
     #[test]
     fn orders_up_to() {
-        let mut asks = VecL3BookSide::new(OrderSide::Ask);
-        let mut bids = VecL3BookSide::new(OrderSide::Bid);
+        let mut asks = side(OrderSide::Ask);
+        let mut bids = side(OrderSide::Bid);
 
         asks.add_order(make_limit(1, OrderSide::Ask, 100)).unwrap();
         asks.add_order(make_limit(2, OrderSide::Ask, 100)).unwrap();
@@ -414,8 +422,8 @@ mod tests {
 
     #[test]
     fn orders_up_to_quantity() {
-        let mut asks = VecL3BookSide::new(OrderSide::Ask);
-        let mut bids = VecL3BookSide::new(OrderSide::Bid);
+        let mut asks = side(OrderSide::Ask);
+        let mut bids = side(OrderSide::Bid);
 
         asks.add_order(make_limit(1, OrderSide::Ask, 100)).unwrap();
         asks.add_order(make_limit(2, OrderSide::Ask, 100)).unwrap();
@@ -465,15 +473,15 @@ mod tests {
             Some(vec![(4.into(), 100.into(), 1.into())])
         );
         assert_eq!(
-            VecL3BookSide::new(OrderSide::Ask).orders_up_to_quantity(Some(1.into())),
+            side(OrderSide::Ask).orders_up_to_quantity(Some(1.into())),
             None
         );
     }
 
     #[test]
     fn top_price() {
-        let mut asks = VecL3BookSide::new(OrderSide::Ask);
-        let mut bids = VecL3BookSide::new(OrderSide::Bid);
+        let mut asks = side(OrderSide::Ask);
+        let mut bids = side(OrderSide::Bid);
 
         asks.add_order(make_limit(1, OrderSide::Ask, 100)).unwrap();
         asks.add_order(make_limit(2, OrderSide::Ask, 105)).unwrap();
@@ -482,12 +490,12 @@ mod tests {
 
         assert_eq!(asks.top_price(), Some(100.into()));
         assert_eq!(bids.top_price(), Some(100.into()));
-        assert_eq!(VecL3BookSide::new(OrderSide::Ask).top_price(), None);
+        assert_eq!(side(OrderSide::Ask).top_price(), None);
     }
 
     #[test]
     fn quantity_at() {
-        let mut side = VecL3BookSide::new(OrderSide::Ask);
+        let mut side = side(OrderSide::Ask);
 
         side.add_order(make_limit(1, OrderSide::Ask, 100)).unwrap();
         side.add_order(make_limit(2, OrderSide::Ask, 100)).unwrap();
@@ -498,7 +506,7 @@ mod tests {
 
     #[test]
     fn quantity_up_to() {
-        let mut asks = VecL3BookSide::new(OrderSide::Ask);
+        let mut asks = side(OrderSide::Ask);
 
         asks.add_order(make_limit(1, OrderSide::Ask, 100)).unwrap();
         asks.add_order(make_limit(2, OrderSide::Ask, 101)).unwrap();
@@ -509,7 +517,7 @@ mod tests {
         assert_eq!(asks.quantity_up_to(Some(100.into())), Some(1.into()));
         assert_eq!(asks.quantity_up_to(Some(99.into())), Some(0.into()));
 
-        let mut bids = VecL3BookSide::new(OrderSide::Bid);
+        let mut bids = side(OrderSide::Bid);
 
         bids.add_order(make_limit(1, OrderSide::Bid, 100)).unwrap();
         bids.add_order(make_limit(2, OrderSide::Bid, 99)).unwrap();

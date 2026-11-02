@@ -1,6 +1,6 @@
 use types::order::{
     fields::{OrderId, OrderSide, Price, Quantity},
-    orders::{LimitOrder, OrderError},
+    orders::{IncomingOrder, Order, OrderError},
 };
 
 use thiserror::Error;
@@ -38,9 +38,12 @@ pub fn sub_quantities(rhs: Quantity, lhs: Quantity) -> Result<Quantity, OrderBoo
 // ── L3 Order Book  ────────────────────────────────────────────────────────────
 
 pub trait L3OrderBook: Default {
+    type Incoming: IncomingOrder;
+    type Resting: Order + From<Self::Incoming>;
+
     // ── Book Mutations ────────────────────────────────────────────────────────
 
-    fn add_order(&mut self, order: LimitOrder) -> Result<(), OrderBookError>;
+    fn add_order(&mut self, order: Self::Incoming) -> Result<(), OrderBookError>;
     fn cancel_order(&mut self, order_id: OrderId) -> Result<(), OrderBookError>;
     fn modify_order(
         &mut self,

@@ -4,30 +4,34 @@ use crate::level3::common::{L3OrderBook, OrderBookError};
 
 use types::order::{
     fields::{OrderId, OrderSide, Price, Quantity},
-    orders::{LimitOrder, Order},
+    orders::{IncomingOrder, Order},
 };
 
-use std::collections::HashMap;
+use std::{collections::HashMap, marker::PhantomData};
 
 // ── Order Book ────────────────────────────────────────────────────────────────
 
-pub struct VecL3OrderBook {
-    ask_side: VecL3BookSide,
-    bid_side: VecL3BookSide,
+pub struct VecL3OrderBook<I, R> {
+    ask_side: VecL3BookSide<R>,
+    bid_side: VecL3BookSide<R>,
     orders_map: HashMap<OrderId, (OrderSide, Price)>,
+
+    _incoming: PhantomData<I>,
 }
 
-impl Default for VecL3OrderBook {
+impl<I, R> Default for VecL3OrderBook<I, R> {
     fn default() -> Self {
         Self {
             ask_side: VecL3BookSide::new(OrderSide::Ask),
             bid_side: VecL3BookSide::new(OrderSide::Bid),
             orders_map: HashMap::new(),
+
+            _incoming: PhantomData,
         }
     }
 }
 
-impl VecL3OrderBook {
+impl<I, R> VecL3OrderBook<I, R> {
     fn find_order(&self, order_id: OrderId) -> Result<&(OrderSide, Price), OrderBookError> {
         self.orders_map
             .get(&order_id)
@@ -35,23 +39,31 @@ impl VecL3OrderBook {
     }
 }
 
-impl L3OrderBook for VecL3OrderBook {
+impl<I, R> L3OrderBook for VecL3OrderBook<I, R>
+where
+    I: IncomingOrder,
+    R: Order + From<I>,
+{
+    type Incoming = I;
+    type Resting = R;
+
     // ── Book Mutations ────────────────────────────────────────────────────────
 
-    fn add_order(&mut self, order: LimitOrder) -> Result<(), OrderBookError> {
-        if self.orders_map.contains_key(&order.id()) {
-            return Err(OrderBookError::OrderIdAlreadyExists {
-                order_id: order.id(),
-            });
+    fn add_order(&mut self, order: I) -> Result<(), OrderBookError> {
+        let order_id = order.id();
+        let side = order.side();
+        let price = order.limit();
+
+        if self.orders_map.contains_key(&order_id) {
+            return Err(OrderBookError::OrderIdAlreadyExists { order_id });
         }
 
-        match order.side() {
+        match side {
             OrderSide::Bid => self.bid_side.add_order(order)?,
             OrderSide::Ask => self.ask_side.add_order(order)?,
         }
 
-        self.orders_map
-            .insert(order.id(), (order.side(), order.limit()));
+        self.orders_map.insert(order_id, (side, price));
 
         Ok(())
     }
@@ -180,7 +192,7 @@ impl L3OrderBook for VecL3OrderBook {
 
 #[cfg(test)]
 mod tests {
-    use types::order::TimeInForce;
+    use types::order::{LimitOrder, RestingLimitOrder, TimeInForce};
 
     use super::*;
 
@@ -195,9 +207,13 @@ mod tests {
         )
     }
 
+    fn make_book() -> VecL3OrderBook<LimitOrder, RestingLimitOrder> {
+        VecL3OrderBook::<LimitOrder, RestingLimitOrder>::default()
+    }
+
     #[test]
     fn unknown_order_errors() {
-        let mut book = VecL3OrderBook::default();
+        let mut book = make_book();
 
         assert_eq!(
             book.cancel_order(42.into()),
@@ -223,7 +239,7 @@ mod tests {
 
     #[test]
     fn add_order() {
-        let mut book = VecL3OrderBook::default();
+        let mut book = make_book();
 
         assert_eq!(
             book.add_order(make_limit(1, 10, OrderSide::Bid, 100)),
@@ -239,8 +255,25 @@ mod tests {
     }
 
     #[test]
+    fn alternate_resting_order_type() {
+        let mut book = VecL3OrderBook::<LimitOrder, LimitOrder>::default();
+
+        book.add_order(make_limit(1, 10, OrderSide::Bid, 100))
+            .unwrap();
+
+        assert_eq!(
+            book.order(1.into()),
+            Some((OrderSide::Bid, 100.into(), 10.into()))
+        );
+        assert_eq!(
+            book.quantity_at(OrderSide::Bid, 100.into()),
+            Some(10.into())
+        );
+    }
+
+    #[test]
     fn add_duplicate_order_id_errors() {
-        let mut book = VecL3OrderBook::default();
+        let mut book = make_book();
         book.add_order(make_limit(1, 10, OrderSide::Bid, 100))
             .unwrap();
 
@@ -260,7 +293,7 @@ mod tests {
 
     #[test]
     fn failed_add_order_does_not_update_index() {
-        let mut book = VecL3OrderBook::default();
+        let mut book = make_book();
         book.add_order(make_limit(1, u64::MAX, OrderSide::Bid, 100))
             .unwrap();
 
@@ -278,7 +311,7 @@ mod tests {
 
     #[test]
     fn cancel_order() {
-        let mut book = VecL3OrderBook::default();
+        let mut book = make_book();
         book.add_order(make_limit(1, 10, OrderSide::Bid, 100))
             .unwrap();
 
@@ -288,7 +321,7 @@ mod tests {
 
     #[test]
     fn modify_order() {
-        let mut book = VecL3OrderBook::default();
+        let mut book = make_book();
         book.add_order(make_limit(1, 10, OrderSide::Bid, 100))
             .unwrap();
 
@@ -301,7 +334,7 @@ mod tests {
 
     #[test]
     fn fill_order() {
-        let mut book = VecL3OrderBook::default();
+        let mut book = make_book();
         book.add_order(make_limit(1, 10, OrderSide::Bid, 100))
             .unwrap();
 
@@ -311,7 +344,7 @@ mod tests {
 
     #[test]
     fn fully_filled_order_is_removed() {
-        let mut book = VecL3OrderBook::default();
+        let mut book = make_book();
         book.add_order(make_limit(1, 10, OrderSide::Bid, 100))
             .unwrap();
 
@@ -325,7 +358,7 @@ mod tests {
 
     #[test]
     fn order() {
-        let mut book = VecL3OrderBook::default();
+        let mut book = make_book();
 
         book.add_order(make_limit(1, 10, OrderSide::Bid, 100))
             .unwrap();
@@ -337,7 +370,7 @@ mod tests {
 
     #[test]
     fn top_order() {
-        let mut book = VecL3OrderBook::default();
+        let mut book = make_book();
 
         book.add_order(make_limit(1, 10, OrderSide::Bid, 100))
             .unwrap();
@@ -360,7 +393,7 @@ mod tests {
 
     #[test]
     fn orders_at() {
-        let mut book = VecL3OrderBook::default();
+        let mut book = make_book();
 
         book.add_order(make_limit(1, 10, OrderSide::Bid, 100))
             .unwrap();
@@ -377,7 +410,7 @@ mod tests {
 
     #[test]
     fn orders_up_to() {
-        let mut book = VecL3OrderBook::default();
+        let mut book = make_book();
 
         book.add_order(make_limit(1, 10, OrderSide::Bid, 100))
             .unwrap();
@@ -411,7 +444,7 @@ mod tests {
 
     #[test]
     fn orders_up_to_quantity() {
-        let mut book = VecL3OrderBook::default();
+        let mut book = make_book();
 
         book.add_order(make_limit(1, 10, OrderSide::Bid, 100))
             .unwrap();
@@ -456,14 +489,14 @@ mod tests {
             book.orders_up_to_quantity(OrderSide::Bid, None)
         );
         assert_eq!(
-            VecL3OrderBook::default().orders_up_to_quantity(OrderSide::Bid, Some(1.into())),
+            make_book().orders_up_to_quantity(OrderSide::Bid, Some(1.into())),
             None
         );
     }
 
     #[test]
     fn top_price() {
-        let mut book = VecL3OrderBook::default();
+        let mut book = make_book();
 
         book.add_order(make_limit(1, 10, OrderSide::Bid, 100))
             .unwrap();
@@ -477,12 +510,12 @@ mod tests {
         assert_eq!(book.top_price(OrderSide::Bid), Some(105.into()));
         assert_eq!(book.top_price(OrderSide::Ask), Some(195.into()));
 
-        assert_eq!(VecL3OrderBook::default().top_price(OrderSide::Bid), None);
+        assert_eq!(make_book().top_price(OrderSide::Bid), None);
     }
 
     #[test]
     fn quantity_at() {
-        let mut book = VecL3OrderBook::default();
+        let mut book = make_book();
 
         book.add_order(make_limit(1, 10, OrderSide::Bid, 100))
             .unwrap();
@@ -499,7 +532,7 @@ mod tests {
 
     #[test]
     fn quantity_up_to() {
-        let mut book = VecL3OrderBook::default();
+        let mut book = make_book();
 
         book.add_order(make_limit(1, 10, OrderSide::Ask, 100))
             .unwrap();

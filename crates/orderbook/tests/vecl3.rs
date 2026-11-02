@@ -1,5 +1,5 @@
 use orderbook::level3::{L3OrderBook, VecL3OrderBook, common::OrderBookError};
-use types::order::{LimitOrder, OrderSide, TimeInForce};
+use types::order::{LimitOrder, OrderSide, RestingLimitOrder, TimeInForce};
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -14,11 +14,15 @@ fn limit(id: u64, quantity: u64, side: OrderSide, price: u64) -> LimitOrder {
     )
 }
 
+fn make_book() -> VecL3OrderBook<LimitOrder, RestingLimitOrder> {
+    VecL3OrderBook::<LimitOrder, RestingLimitOrder>::default()
+}
+
 // ── Integration tests ─────────────────────────────────────────────────────────
 
 #[test]
 fn liquidity_build_up_and_queries() {
-    let mut book = VecL3OrderBook::default();
+    let mut book = make_book();
 
     book.add_order(limit(1, 10, OrderSide::Bid, 100)).unwrap();
     book.add_order(limit(2, 5, OrderSide::Bid, 105)).unwrap();
@@ -55,7 +59,7 @@ fn liquidity_build_up_and_queries() {
 
 #[test]
 fn order_lifecycle() {
-    let mut book = VecL3OrderBook::default();
+    let mut book = make_book();
 
     book.add_order(limit(1, 10, OrderSide::Bid, 100)).unwrap();
     assert_eq!(book.fill_order(1.into(), 4.into()), Ok(()));
@@ -91,7 +95,7 @@ fn order_lifecycle() {
 
 #[test]
 fn fifo_orders_at_same_price() {
-    let mut book = VecL3OrderBook::default();
+    let mut book = make_book();
 
     book.add_order(limit(1, 10, OrderSide::Ask, 100)).unwrap();
     book.add_order(limit(2, 5, OrderSide::Ask, 100)).unwrap();
@@ -123,7 +127,7 @@ fn fifo_orders_at_same_price() {
 
 #[test]
 fn duplicate_order_id_is_rejected() {
-    let mut book = VecL3OrderBook::default();
+    let mut book = make_book();
 
     book.add_order(limit(1, 10, OrderSide::Bid, 100)).unwrap();
 
