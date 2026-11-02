@@ -4,6 +4,7 @@ use telemetry::tracing::{
     handoff::{Channel, Subscriber},
     writers::{FileWriter, StdoutWriter},
 };
+
 use telemetry::{
     schema::{metrics, scopes},
     tracing::writers::PostgresWriter,
