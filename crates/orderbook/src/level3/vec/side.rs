@@ -1,6 +1,6 @@
 use super::level::VecL3BookLevel;
 
-use crate::level3::common::{add_quantities, OrderBookError};
+use crate::level3::common::{OrderBookError, add_quantities};
 
 use types::order::{
     fields::{OrderId, OrderSide, Price, Quantity},
@@ -146,21 +146,18 @@ impl<R: Order> VecL3BookSide<R> {
 // ── Get Order ─────────────────────────────────────────────────────────────────
 
 impl<R: Order> VecL3BookSide<R> {
-    pub fn order(
-        &self,
-        order_id: OrderId,
-        order_price: Price,
-    ) -> Option<(OrderSide, Price, Quantity)> {
+    pub fn order(&self, order_id: OrderId, order_price: Price) -> Option<(OrderSide, Price, &R)> {
         let position = self.find_level(order_price).ok()?;
-        let quantity = self.levels[position].order(order_id)?;
+        let order = self.levels[position].order(order_id)?;
 
-        Some((self.side, order_price, quantity))
+        Some((self.side, order_price, order))
     }
 
-    pub fn top_order(&self) -> Option<(OrderId, Price, Quantity)> {
-        let (order_id, quantity) = self.levels.first()?.top_order()?;
+    pub fn top_order(&self) -> Option<(Price, &R)> {
+        let level = self.levels.first()?;
+        let order = level.top_order()?;
 
-        Some((order_id, self.levels[0].price, quantity))
+        Some((level.price, order))
     }
 }
 
@@ -351,7 +348,11 @@ mod tests {
         asks.add_order(make_limit(1, OrderSide::Ask, 100)).unwrap();
 
         let expected_result = (OrderSide::Ask, Price::new(100), Quantity::new(1));
-        assert_eq!(asks.order(1.into(), 100.into()), Some(expected_result));
+        assert_eq!(
+            asks.order(1.into(), 100.into())
+                .map(|(side, price, order)| (side, price, order.quantity())),
+            Some(expected_result)
+        );
         assert_eq!(asks.order(1.into(), 99.into()), None);
         assert_eq!(asks.order(42.into(), 100.into()), None);
     }
@@ -366,8 +367,14 @@ mod tests {
         bids.add_order(make_limit(3, OrderSide::Bid, 100)).unwrap();
         bids.add_order(make_limit(4, OrderSide::Bid, 95)).unwrap();
 
-        assert_eq!(asks.top_order(), Some((1.into(), 100.into(), 1.into())));
-        assert_eq!(bids.top_order(), Some((3.into(), 100.into(), 1.into())));
+        assert_eq!(
+            asks.top_order().map(|(price, order)| (price, order.id())),
+            Some((100.into(), 1.into()))
+        );
+        assert_eq!(
+            bids.top_order().map(|(price, order)| (price, order.id())),
+            Some((100.into(), 3.into()))
+        );
         assert_eq!(side(OrderSide::Ask).top_order(), None);
     }
 

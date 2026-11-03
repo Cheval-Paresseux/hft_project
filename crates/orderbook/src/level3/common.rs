@@ -58,8 +58,8 @@ pub trait L3OrderBook: Default {
 
     // ── Get Order ─────────────────────────────────────────────────────────────
 
-    fn order(&self, order_id: OrderId) -> Option<(OrderSide, Price, Quantity)>;
-    fn top_order(&self, side: OrderSide) -> Option<(OrderId, Price, Quantity)>;
+    fn order(&self, order_id: OrderId) -> Option<(OrderSide, Price, &Self::Resting)>;
+    fn top_order(&self, side: OrderSide) -> Option<(Price, &Self::Resting)>;
 
     // ── Orders Look Up ────────────────────────────────────────────────────────
 

@@ -1,5 +1,5 @@
 use orderbook::level3::{L3OrderBook, VecL3OrderBook, common::OrderBookError};
-use types::order::{LimitOrder, OrderSide, RestingLimitOrder, TimeInForce};
+use types::order::{LimitOrder, OrderSide, RestingLimitOrder, TimeInForce, orders::Order};
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -33,7 +33,8 @@ fn liquidity_build_up_and_queries() {
     assert_eq!(book.top_price(OrderSide::Bid), Some(105.into()));
     assert_eq!(book.top_price(OrderSide::Ask), Some(195.into()));
     assert_eq!(
-        book.top_order(OrderSide::Bid),
+        book.top_order(OrderSide::Bid)
+            .map(|(price, order)| (order.id(), price, order.quantity())),
         Some((2.into(), 105.into(), 5.into()))
     );
 
@@ -67,7 +68,8 @@ fn order_lifecycle() {
 
     assert_eq!(book.modify_order(1.into(), 5.into()), Ok(()));
     assert_eq!(
-        book.order(1.into()),
+        book.order(1.into())
+            .map(|(side, price, order)| (side, price, order.quantity())),
         Some((OrderSide::Bid, 100.into(), 5.into()))
     );
 
@@ -114,13 +116,15 @@ fn fifo_orders_at_same_price() {
         Some(22.into())
     );
     assert_eq!(
-        book.top_order(OrderSide::Ask),
+        book.top_order(OrderSide::Ask)
+            .map(|(price, order)| (order.id(), price, order.quantity())),
         Some((1.into(), 100.into(), 10.into()))
     );
 
     assert_eq!(book.fill_order(1.into(), 10.into()), Ok(()));
     assert_eq!(
-        book.top_order(OrderSide::Ask),
+        book.top_order(OrderSide::Ask)
+            .map(|(price, order)| (order.id(), price, order.quantity())),
         Some((2.into(), 100.into(), 5.into()))
     );
 }
@@ -137,7 +141,8 @@ fn duplicate_order_id_is_rejected() {
     );
 
     assert_eq!(
-        book.order(1.into()),
+        book.order(1.into())
+            .map(|(side, price, order)| (side, price, order.quantity())),
         Some((OrderSide::Bid, 100.into(), 10.into()))
     );
     assert_eq!(book.top_price(OrderSide::Bid), Some(100.into()));

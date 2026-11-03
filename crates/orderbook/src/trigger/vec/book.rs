@@ -129,7 +129,10 @@ impl<T: Ord, O: Order> VecTriggerBook<T, O> {
 
 // ── Trigger Book Trait ────────────────────────────────────────────────────────
 
-impl<T: Ord, O: Order> TriggerBook<T, O> for VecTriggerBook<T, O> {
+impl<T: Ord, O: Order> TriggerBook for VecTriggerBook<T, O> {
+    type Threshold = T;
+    type Order = O;
+
     // ── Book Mutations ────────────────────────────────────────────────────────
 
     fn add_order(&mut self, threshold: T, order: O) -> Result<(), TriggerBookError> {

@@ -38,31 +38,44 @@ impl TriggerCondition {
 
 // ── Trigger Book ──────────────────────────────────────────────────────────────
 
-pub trait TriggerBook<T: Ord, O: Order> {
+pub trait TriggerBook {
+    type Threshold: Ord;
+    type Order: Order;
+
     // ── Book Mutations ────────────────────────────────────────────────────────
-    fn add_order(&mut self, threshold: T, order: O) -> Result<(), TriggerBookError>;
+    fn add_order(
+        &mut self,
+        threshold: Self::Threshold,
+        order: Self::Order,
+    ) -> Result<(), TriggerBookError>;
     fn cancel_order(&mut self, order_id: OrderId) -> Result<(), TriggerBookError>;
     fn modify_order(
         &mut self,
         order_id: OrderId,
         new_quantity: Quantity,
     ) -> Result<(), TriggerBookError>;
-    fn trigger_orders(&mut self, trigger: &T) -> Vec<(T, O)>;
+    fn trigger_orders(&mut self, trigger: &Self::Threshold) -> Vec<(Self::Threshold, Self::Order)>;
 
     // ── Get Order ─────────────────────────────────────────────────────────────
 
-    fn order(&self, order_id: OrderId) -> Option<(&T, &O)>;
-    fn top_order(&self) -> Option<(&T, &O)>;
+    fn order(&self, order_id: OrderId) -> Option<(&Self::Threshold, &Self::Order)>;
+    fn top_order(&self) -> Option<(&Self::Threshold, &Self::Order)>;
 
     // ── Orders Look Up ────────────────────────────────────────────────────────
 
-    fn orders_at(&self, threshold: &T) -> Vec<(&T, &O)>;
-    fn orders_up_to(&self, bound: Option<&T>) -> Vec<(&T, &O)>;
-    fn orders_up_to_quantity(&self, bound: Option<Quantity>) -> Vec<(&T, &O)>;
+    fn orders_at(&self, threshold: &Self::Threshold) -> Vec<(&Self::Threshold, &Self::Order)>;
+    fn orders_up_to(
+        &self,
+        bound: Option<&Self::Threshold>,
+    ) -> Vec<(&Self::Threshold, &Self::Order)>;
+    fn orders_up_to_quantity(
+        &self,
+        bound: Option<Quantity>,
+    ) -> Vec<(&Self::Threshold, &Self::Order)>;
 
     // ── Threshold Lookups ─────────────────────────────────────────────────────
 
-    fn top_threshold(&self) -> Option<&T>;
-    fn quantity_at(&self, threshold: &T) -> Option<Quantity>;
-    fn quantity_up_to(&self, bound: Option<&T>) -> Option<Quantity>;
+    fn top_threshold(&self) -> Option<&Self::Threshold>;
+    fn quantity_at(&self, threshold: &Self::Threshold) -> Option<Quantity>;
+    fn quantity_up_to(&self, bound: Option<&Self::Threshold>) -> Option<Quantity>;
 }

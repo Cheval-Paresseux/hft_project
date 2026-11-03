@@ -1,4 +1,4 @@
-use crate::level3::common::{add_quantities, sub_quantities, OrderBookError};
+use crate::level3::common::{OrderBookError, add_quantities, sub_quantities};
 
 use types::order::{
     fields::{OrderId, Price, Quantity},
@@ -97,16 +97,14 @@ impl<R: Order> VecL3BookLevel<R> {
 // ── Get Order ─────────────────────────────────────────────────────────────────
 
 impl<R: Order> VecL3BookLevel<R> {
-    pub fn order(&self, order_id: OrderId) -> Option<Quantity> {
+    pub fn order(&self, order_id: OrderId) -> Option<&R> {
         let position = self.find_position(order_id).ok()?;
 
-        Some(self.orders[position].quantity())
+        self.orders.get(position)
     }
 
-    pub fn top_order(&self) -> Option<(OrderId, Quantity)> {
-        let first = self.orders.first()?;
-
-        Some((first.id(), first.quantity()))
+    pub fn top_order(&self) -> Option<&R> {
+        self.orders.first()
     }
 }
 
@@ -130,7 +128,7 @@ impl<R: Order> VecL3BookLevel<R> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use types::order::{orders::OrderError, LimitOrder, OrderSide, RestingLimitOrder, TimeInForce};
+    use types::order::{LimitOrder, OrderSide, RestingLimitOrder, TimeInForce, orders::OrderError};
 
     fn make_limit(id: u64, quantity: u64) -> LimitOrder {
         LimitOrder::new(
@@ -262,7 +260,10 @@ mod tests {
         let mut level = make_level();
         level.add_order(make_limit(1, 10)).unwrap();
 
-        assert_eq!(level.order(1.into()), Some(10.into()));
+        assert_eq!(
+            level.order(1.into()).map(|order| order.quantity()),
+            Some(10.into())
+        );
         assert_eq!(level.order(42.into()), None);
     }
 
@@ -272,7 +273,12 @@ mod tests {
         level.add_order(make_limit(1, 10)).unwrap();
         level.add_order(make_limit(2, 5)).unwrap();
 
-        assert_eq!(level.top_order(), Some((1.into(), 10.into())));
+        assert_eq!(
+            level
+                .top_order()
+                .map(|order| (order.id(), order.quantity())),
+            Some((1.into(), 10.into()))
+        );
         assert_eq!(make_level().top_order(), None);
     }
 

@@ -115,7 +115,7 @@ where
 
     // ── Get Order ─────────────────────────────────────────────────────────────
 
-    fn order(&self, order_id: OrderId) -> Option<(OrderSide, Price, Quantity)> {
+    fn order(&self, order_id: OrderId) -> Option<(OrderSide, Price, &R)> {
         let &(side, price) = self.find_order(order_id).ok()?;
 
         match side {
@@ -124,7 +124,7 @@ where
         }
     }
 
-    fn top_order(&self, side: OrderSide) -> Option<(OrderId, Price, Quantity)> {
+    fn top_order(&self, side: OrderSide) -> Option<(Price, &R)> {
         match side {
             OrderSide::Bid => self.bid_side.top_order(),
             OrderSide::Ask => self.ask_side.top_order(),
@@ -262,7 +262,8 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            book.order(1.into()),
+            book.order(1.into())
+                .map(|(side, price, order)| (side, price, order.quantity())),
             Some((OrderSide::Bid, 100.into(), 10.into()))
         );
         assert_eq!(
@@ -283,7 +284,8 @@ mod tests {
         );
 
         assert_eq!(
-            book.order(1.into()),
+            book.order(1.into())
+                .map(|(side, price, order)| (side, price, order.quantity())),
             Some((OrderSide::Bid, 100.into(), 10.into()))
         );
 
@@ -327,7 +329,8 @@ mod tests {
 
         assert_eq!(book.modify_order(1.into(), 23.into()), Ok(()));
         assert_eq!(
-            book.order(1.into()),
+            book.order(1.into())
+                .map(|(side, price, order)| (side, price, order.quantity())),
             Some((OrderSide::Bid, 100.into(), 23.into()))
         );
     }
@@ -363,8 +366,20 @@ mod tests {
         book.add_order(make_limit(1, 10, OrderSide::Bid, 100))
             .unwrap();
 
-        let expected_result = (OrderSide::Bid, Price::new(100), Quantity::new(10));
-        assert_eq!(book.order(1.into()), Some(expected_result));
+        assert_eq!(
+            book.order(1.into()).map(|(side, price, order)| (
+                side,
+                price,
+                order.id(),
+                order.quantity()
+            )),
+            Some((
+                OrderSide::Bid,
+                Price::new(100),
+                OrderId::new(1),
+                Quantity::new(10)
+            ))
+        );
         assert_eq!(book.order(42.into()), None);
     }
 
@@ -382,11 +397,19 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            book.top_order(OrderSide::Bid),
+            book.top_order(OrderSide::Bid).map(|(price, order)| (
+                order.id(),
+                price,
+                order.quantity()
+            )),
             Some((2.into(), 105.into(), 10.into()))
         );
         assert_eq!(
-            book.top_order(OrderSide::Ask),
+            book.top_order(OrderSide::Ask).map(|(price, order)| (
+                order.id(),
+                price,
+                order.quantity()
+            )),
             Some((4.into(), 195.into(), 10.into()))
         );
     }
