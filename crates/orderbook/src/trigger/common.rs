@@ -79,3 +79,24 @@ pub trait TriggerBook {
     fn quantity_at(&self, threshold: &Self::Threshold) -> Option<Quantity>;
     fn quantity_up_to(&self, bound: Option<&Self::Threshold>) -> Option<Quantity>;
 }
+// ═══════════════════════════════════════════════════════════════════════════════
+//  Unit Tests
+// ═══════════════════════════════════════════════════════════════════════════════
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn is_triggered() {
+        let threshold = 100;
+
+        assert!(TriggerCondition::AtOrAbove.is_triggered(&threshold, &100));
+        assert!(TriggerCondition::AtOrAbove.is_triggered(&threshold, &101));
+        assert!(!TriggerCondition::AtOrAbove.is_triggered(&threshold, &99));
+
+        assert!(TriggerCondition::AtOrBelow.is_triggered(&threshold, &100));
+        assert!(TriggerCondition::AtOrBelow.is_triggered(&threshold, &99));
+        assert!(!TriggerCondition::AtOrBelow.is_triggered(&threshold, &101));
+    }
+}

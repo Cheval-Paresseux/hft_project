@@ -303,6 +303,17 @@ mod tests {
     }
 
     #[test]
+    fn new() {
+        let above = make_book(TriggerCondition::AtOrAbove);
+        assert_eq!(above.condition, TriggerCondition::AtOrAbove);
+        assert!(above.orders.is_empty());
+
+        let below = make_book(TriggerCondition::AtOrBelow);
+        assert_eq!(below.condition, TriggerCondition::AtOrBelow);
+        assert!(below.orders.is_empty());
+    }
+
+    #[test]
     fn add_order() {
         let mut book = make_book(TriggerCondition::AtOrAbove);
 
