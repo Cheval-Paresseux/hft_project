@@ -1,4 +1,4 @@
-use crate::level3::common::{OrderBookError, add_quantities, sub_quantities};
+use crate::level3::common::{add_quantities, sub_quantities, OrderBookError};
 
 use types::order::{
     fields::{OrderId, Price, Quantity},
@@ -111,13 +111,8 @@ impl<R: Order> VecL3BookLevel<R> {
 // ── Orders Look Up  ───────────────────────────────────────────────────────────
 
 impl<R: Order> VecL3BookLevel<R> {
-    pub fn orders_at(&self) -> Option<Vec<(OrderId, Quantity)>> {
-        let mut orders = Vec::with_capacity(self.orders.len());
-        for order in &self.orders {
-            orders.push((order.id(), order.quantity()));
-        }
-
-        (!orders.is_empty()).then_some(orders)
+    pub fn orders_at(&self) -> &[R] {
+        &self.orders
     }
 }
 
@@ -128,7 +123,7 @@ impl<R: Order> VecL3BookLevel<R> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use types::order::{LimitOrder, OrderSide, RestingLimitOrder, TimeInForce, orders::OrderError};
+    use types::order::{orders::OrderError, LimitOrder, OrderSide, RestingLimitOrder, TimeInForce};
 
     fn make_limit(id: u64, quantity: u64) -> LimitOrder {
         LimitOrder::new(
@@ -143,6 +138,28 @@ mod tests {
 
     fn make_level() -> VecL3BookLevel<RestingLimitOrder> {
         VecL3BookLevel::new(100.into())
+    }
+
+    #[test]
+    fn new() {
+        let level = make_level();
+
+        assert_eq!(level.price, 100.into());
+        assert_eq!(level.total_quantity, 0.into());
+        assert!(level.orders.is_empty());
+    }
+
+    #[test]
+    fn is_empty() {
+        let mut level = make_level();
+
+        assert!(level.is_empty());
+
+        level.add_order(make_limit(1, 10)).unwrap();
+        assert!(!level.is_empty());
+
+        level.cancel_order(1.into()).unwrap();
+        assert!(level.is_empty());
     }
 
     #[test]
@@ -289,7 +306,13 @@ mod tests {
         level.add_order(make_limit(2, 5)).unwrap();
 
         let expected_result = vec![(1.into(), 10.into()), (2.into(), 5.into())];
-        assert_eq!(level.orders_at(), Some(expected_result));
-        assert_eq!(make_level().orders_at(), None);
+        let orders: Vec<_> = level
+            .orders_at()
+            .iter()
+            .map(|order| (order.id(), order.quantity()))
+            .collect();
+
+        assert_eq!(orders, expected_result);
+        assert!(make_level().orders_at().is_empty());
     }
 }

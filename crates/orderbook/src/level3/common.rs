@@ -59,25 +59,58 @@ pub trait L3OrderBook: Default {
     // ── Get Order ─────────────────────────────────────────────────────────────
 
     fn order(&self, order_id: OrderId) -> Option<(OrderSide, Price, &Self::Resting)>;
-    fn top_order(&self, side: OrderSide) -> Option<(Price, &Self::Resting)>;
+    fn top_order(&self, side: OrderSide) -> Option<(OrderSide, Price, &Self::Resting)>;
 
     // ── Orders Look Up ────────────────────────────────────────────────────────
 
-    fn orders_at(&self, side: OrderSide, price: Price) -> Option<Vec<(OrderId, Quantity)>>;
+    fn orders_at(&self, side: OrderSide, price: Price) -> Vec<(OrderSide, Price, &Self::Resting)>;
     fn orders_up_to(
         &self,
         side: OrderSide,
         bound: Option<Price>,
-    ) -> Option<Vec<(OrderId, Price, Quantity)>>;
+    ) -> Vec<(OrderSide, Price, &Self::Resting)>;
     fn orders_up_to_quantity(
         &self,
         side: OrderSide,
         bound: Option<Quantity>,
-    ) -> Option<Vec<(OrderId, Price, Quantity)>>;
+    ) -> Vec<(OrderSide, Price, &Self::Resting)>;
 
     // ── Aggregation Look Up ───────────────────────────────────────────────────
 
     fn top_price(&self, side: OrderSide) -> Option<Price>;
     fn quantity_at(&self, side: OrderSide, price: Price) -> Option<Quantity>;
     fn quantity_up_to(&self, side: OrderSide, bound: Option<Price>) -> Option<Quantity>;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  Unit Tests
+// ═══════════════════════════════════════════════════════════════════════════════
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn add_quantities() {
+        assert_eq!(
+            super::add_quantities(Quantity::new(2), Quantity::new(3)),
+            Ok(Quantity::new(5))
+        );
+        assert_eq!(
+            super::add_quantities(Quantity::new(u64::MAX), Quantity::new(1)),
+            Err(OrderBookError::QuantityOverflow)
+        );
+    }
+
+    #[test]
+    fn sub_quantities() {
+        assert_eq!(
+            super::sub_quantities(Quantity::new(5), Quantity::new(3)),
+            Ok(Quantity::new(2))
+        );
+        assert_eq!(
+            super::sub_quantities(Quantity::new(3), Quantity::new(5)),
+            Err(OrderBookError::QuantityOverflow)
+        );
+    }
 }

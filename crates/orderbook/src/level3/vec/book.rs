@@ -124,7 +124,7 @@ where
         }
     }
 
-    fn top_order(&self, side: OrderSide) -> Option<(Price, &R)> {
+    fn top_order(&self, side: OrderSide) -> Option<(OrderSide, Price, &R)> {
         match side {
             OrderSide::Bid => self.bid_side.top_order(),
             OrderSide::Ask => self.ask_side.top_order(),
@@ -133,18 +133,14 @@ where
 
     // ── Orders Look Up ────────────────────────────────────────────────────────
 
-    fn orders_at(&self, side: OrderSide, price: Price) -> Option<Vec<(OrderId, Quantity)>> {
+    fn orders_at(&self, side: OrderSide, price: Price) -> Vec<(OrderSide, Price, &R)> {
         match side {
             OrderSide::Bid => self.bid_side.orders_at(price),
             OrderSide::Ask => self.ask_side.orders_at(price),
         }
     }
 
-    fn orders_up_to(
-        &self,
-        side: OrderSide,
-        bound: Option<Price>,
-    ) -> Option<Vec<(OrderId, Price, Quantity)>> {
+    fn orders_up_to(&self, side: OrderSide, bound: Option<Price>) -> Vec<(OrderSide, Price, &R)> {
         match side {
             OrderSide::Bid => self.bid_side.orders_up_to(bound),
             OrderSide::Ask => self.ask_side.orders_up_to(bound),
@@ -155,7 +151,7 @@ where
         &self,
         side: OrderSide,
         bound: Option<Quantity>,
-    ) -> Option<Vec<(OrderId, Price, Quantity)>> {
+    ) -> Vec<(OrderSide, Price, &R)> {
         match side {
             OrderSide::Bid => self.bid_side.orders_up_to_quantity(bound),
             OrderSide::Ask => self.ask_side.orders_up_to_quantity(bound),
@@ -209,6 +205,15 @@ mod tests {
 
     fn make_book() -> VecL3OrderBook<LimitOrder, RestingLimitOrder> {
         VecL3OrderBook::<LimitOrder, RestingLimitOrder>::default()
+    }
+
+    fn entries(
+        orders: Vec<(OrderSide, Price, &RestingLimitOrder)>,
+    ) -> Vec<(OrderSide, Price, OrderId, Quantity)> {
+        orders
+            .into_iter()
+            .map(|(side, price, order)| (side, price, order.id(), order.quantity()))
+            .collect()
     }
 
     #[test]
@@ -397,20 +402,22 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            book.top_order(OrderSide::Bid).map(|(price, order)| (
-                order.id(),
+            book.top_order(OrderSide::Bid).map(|(side, price, order)| (
+                side,
                 price,
+                order.id(),
                 order.quantity()
             )),
-            Some((2.into(), 105.into(), 10.into()))
+            Some((OrderSide::Bid, 105.into(), 2.into(), 10.into()))
         );
         assert_eq!(
-            book.top_order(OrderSide::Ask).map(|(price, order)| (
-                order.id(),
+            book.top_order(OrderSide::Ask).map(|(side, price, order)| (
+                side,
                 price,
+                order.id(),
                 order.quantity()
             )),
-            Some((4.into(), 195.into(), 10.into()))
+            Some((OrderSide::Ask, 195.into(), 4.into(), 10.into()))
         );
     }
 
@@ -423,12 +430,25 @@ mod tests {
         book.add_order(make_limit(2, 10, OrderSide::Bid, 100))
             .unwrap();
 
-        let expected_result = vec![(1.into(), 10.into()), (2.into(), 10.into())];
+        let expected_result = vec![
+            (
+                OrderSide::Bid,
+                Price::new(100),
+                OrderId::new(1),
+                Quantity::new(10),
+            ),
+            (
+                OrderSide::Bid,
+                Price::new(100),
+                OrderId::new(2),
+                Quantity::new(10),
+            ),
+        ];
         assert_eq!(
-            book.orders_at(OrderSide::Bid, 100.into()),
-            Some(expected_result)
+            entries(book.orders_at(OrderSide::Bid, 100.into())),
+            expected_result
         );
-        assert_eq!(book.orders_at(OrderSide::Bid, 42.into()), None);
+        assert!(book.orders_at(OrderSide::Bid, 42.into()).is_empty());
     }
 
     #[test]
@@ -445,24 +465,51 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            book.orders_up_to(OrderSide::Bid, None),
-            Some(vec![
-                (2.into(), 105.into(), 5.into()),
-                (1.into(), 100.into(), 10.into()),
-            ])
+            entries(book.orders_up_to(OrderSide::Bid, None)),
+            vec![
+                (
+                    OrderSide::Bid,
+                    Price::new(105),
+                    OrderId::new(2),
+                    Quantity::new(5)
+                ),
+                (
+                    OrderSide::Bid,
+                    Price::new(100),
+                    OrderId::new(1),
+                    Quantity::new(10)
+                ),
+            ]
         );
         assert_eq!(
-            book.orders_up_to(OrderSide::Ask, None),
-            Some(vec![
-                (4.into(), 195.into(), 8.into()),
-                (3.into(), 200.into(), 7.into()),
-            ])
+            entries(book.orders_up_to(OrderSide::Ask, None)),
+            vec![
+                (
+                    OrderSide::Ask,
+                    Price::new(195),
+                    OrderId::new(4),
+                    Quantity::new(8)
+                ),
+                (
+                    OrderSide::Ask,
+                    Price::new(200),
+                    OrderId::new(3),
+                    Quantity::new(7)
+                ),
+            ]
         );
         assert_eq!(
-            book.orders_up_to(OrderSide::Ask, Some(195.into())),
-            Some(vec![(4.into(), 195.into(), 8.into())])
+            entries(book.orders_up_to(OrderSide::Ask, Some(195.into()))),
+            vec![(
+                OrderSide::Ask,
+                Price::new(195),
+                OrderId::new(4),
+                Quantity::new(8)
+            )]
         );
-        assert_eq!(book.orders_up_to(OrderSide::Bid, Some(106.into())), None);
+        assert!(book
+            .orders_up_to(OrderSide::Bid, Some(106.into()))
+            .is_empty());
     }
 
     #[test]
@@ -478,43 +525,72 @@ mod tests {
         book.add_order(make_limit(4, 8, OrderSide::Ask, 195))
             .unwrap();
 
+        let bids = vec![
+            (
+                OrderSide::Bid,
+                Price::new(105),
+                OrderId::new(2),
+                Quantity::new(5),
+            ),
+            (
+                OrderSide::Bid,
+                Price::new(100),
+                OrderId::new(1),
+                Quantity::new(10),
+            ),
+        ];
+        let asks = vec![
+            (
+                OrderSide::Ask,
+                Price::new(195),
+                OrderId::new(4),
+                Quantity::new(8),
+            ),
+            (
+                OrderSide::Ask,
+                Price::new(200),
+                OrderId::new(3),
+                Quantity::new(7),
+            ),
+        ];
+
         assert_eq!(
-            book.orders_up_to_quantity(OrderSide::Bid, None),
-            Some(vec![
-                (2.into(), 105.into(), 5.into()),
-                (1.into(), 100.into(), 10.into()),
-            ])
+            entries(book.orders_up_to_quantity(OrderSide::Bid, None)),
+            bids
         );
         assert_eq!(
-            book.orders_up_to_quantity(OrderSide::Ask, None),
-            Some(vec![
-                (4.into(), 195.into(), 8.into()),
-                (3.into(), 200.into(), 7.into()),
-            ])
+            entries(book.orders_up_to_quantity(OrderSide::Ask, None)),
+            asks
         );
         assert_eq!(
-            book.orders_up_to_quantity(OrderSide::Ask, Some(8.into())),
-            Some(vec![(4.into(), 195.into(), 8.into())])
+            entries(book.orders_up_to_quantity(OrderSide::Ask, Some(8.into()))),
+            vec![(
+                OrderSide::Ask,
+                Price::new(195),
+                OrderId::new(4),
+                Quantity::new(8)
+            )]
         );
         assert_eq!(
-            book.orders_up_to_quantity(OrderSide::Ask, Some(12.into())),
-            Some(vec![
-                (4.into(), 195.into(), 8.into()),
-                (3.into(), 200.into(), 7.into()),
-            ])
+            entries(book.orders_up_to_quantity(OrderSide::Ask, Some(12.into()))),
+            asks
         );
         assert_eq!(
-            book.orders_up_to_quantity(OrderSide::Bid, Some(5.into())),
-            Some(vec![(2.into(), 105.into(), 5.into())])
+            entries(book.orders_up_to_quantity(OrderSide::Bid, Some(5.into()))),
+            vec![(
+                OrderSide::Bid,
+                Price::new(105),
+                OrderId::new(2),
+                Quantity::new(5)
+            )]
         );
         assert_eq!(
-            book.orders_up_to_quantity(OrderSide::Bid, Some(100.into())),
-            book.orders_up_to_quantity(OrderSide::Bid, None)
+            entries(book.orders_up_to_quantity(OrderSide::Bid, Some(100.into()))),
+            bids
         );
-        assert_eq!(
-            make_book().orders_up_to_quantity(OrderSide::Bid, Some(1.into())),
-            None
-        );
+        assert!(make_book()
+            .orders_up_to_quantity(OrderSide::Bid, Some(1.into()))
+            .is_empty());
     }
 
     #[test]
