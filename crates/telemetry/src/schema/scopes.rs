@@ -24,3 +24,35 @@ pub static TELEMETRY_SCOPES: &[ScopeMetadata] = &[
         payload_info: "N/A",
     },
 ];
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  Unit Tests
+// ═══════════════════════════════════════════════════════════════════════════════
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashSet;
+
+    #[test]
+    fn telemetry_scopes() {
+        let mut ids = HashSet::new();
+        let mut names = HashSet::new();
+
+        for scope in TELEMETRY_SCOPES {
+            assert!(ids.insert(scope.id), "duplicate scope id {:?}", scope.id);
+            assert!(
+                names.insert(scope.name),
+                "duplicate scope name {}",
+                scope.name
+            );
+
+            assert_eq!(scope.id.namespace, TELEMETRY_NAMESPACE);
+            assert!(!scope.name.is_empty());
+            assert!(!scope.description.is_empty());
+            assert!(!scope.payload_info.is_empty());
+        }
+
+        assert_eq!(TELEMETRY_SCOPES.len(), 2);
+    }
+}

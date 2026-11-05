@@ -72,48 +72,84 @@ pub fn process_locked_memory() -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    fn assert_page_aligned(value: u64) {
+        assert_eq!(value % 1024, 0, "value {value} is not page aligned");
+    }
 
     #[test]
-    fn resident_memory_is_not_greater_than_peak() {
-        let snapshot = process_memory_snapshot();
+    fn process_memory_snapshot() {
+        let snapshot = super::process_memory_snapshot();
 
         assert!(snapshot.resident <= snapshot.resident_peak);
-    }
-
-    #[test]
-    fn virtual_memory_is_not_greater_than_peak() {
-        let snapshot = process_memory_snapshot();
-
         assert!(snapshot.virtual_ <= snapshot.virtual_peak);
-    }
 
-    #[test]
-    fn all_values_are_page_aligned() {
-        let snapshot = process_memory_snapshot();
+        assert_page_aligned(snapshot.resident);
+        assert_page_aligned(snapshot.resident_peak);
+        assert_page_aligned(snapshot.virtual_);
+        assert_page_aligned(snapshot.virtual_peak);
+        assert_page_aligned(snapshot.swap);
+        assert_page_aligned(snapshot.locked);
 
-        assert_eq!(snapshot.resident % 1024, 0);
-        assert_eq!(snapshot.resident_peak % 1024, 0);
-        assert_eq!(snapshot.virtual_ % 1024, 0);
-        assert_eq!(snapshot.virtual_peak % 1024, 0);
-        assert_eq!(snapshot.swap % 1024, 0);
-        assert_eq!(snapshot.locked % 1024, 0);
-    }
-
-    #[test]
-    fn snapshot_is_self_consistent() {
-        let first = process_memory_snapshot();
-        let second = process_memory_snapshot();
-
-        assert!(second.resident_peak >= first.resident_peak);
-        assert!(second.virtual_peak >= first.virtual_peak);
-    }
-
-    #[test]
-    fn process_has_some_virtual_memory() {
-        let snapshot = process_memory_snapshot();
-
+        assert!(snapshot.resident > 0);
         assert!(snapshot.virtual_ > 0);
         assert!(snapshot.virtual_peak > 0);
+    }
+
+    #[test]
+    fn process_resident_memory() {
+        let value = super::process_resident_memory();
+
+        assert_page_aligned(value);
+        assert!(value > 0);
+
+        let after = super::process_memory_snapshot();
+        assert!(value <= after.resident_peak);
+    }
+
+    #[test]
+    fn process_resident_memory_peak() {
+        let before = super::process_memory_snapshot();
+
+        let value = super::process_resident_memory_peak();
+
+        assert_page_aligned(value);
+        assert!(value >= before.resident_peak);
+        assert!(value >= before.resident);
+    }
+
+    #[test]
+    fn process_virtual_memory() {
+        let value = super::process_virtual_memory();
+
+        assert_page_aligned(value);
+        assert!(value > 0);
+
+        let after = super::process_memory_snapshot();
+        assert!(value <= after.virtual_peak);
+    }
+
+    #[test]
+    fn process_virtual_memory_peak() {
+        let before = super::process_memory_snapshot();
+
+        let value = super::process_virtual_memory_peak();
+
+        assert_page_aligned(value);
+        assert!(value >= before.virtual_peak);
+        assert!(value >= before.virtual_);
+    }
+
+    #[test]
+    fn process_swap_memory() {
+        let value = super::process_swap_memory();
+
+        assert_page_aligned(value);
+    }
+
+    #[test]
+    fn process_locked_memory() {
+        let value = super::process_locked_memory();
+
+        assert_page_aligned(value);
     }
 }

@@ -110,3 +110,106 @@ impl<'a> Resolver<'a> {
         }
     }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  Unit Tests
+// ═══════════════════════════════════════════════════════════════════════════════
+
+#[cfg(test)]
+mod tests {
+    use super::{ResolvedRecord, Resolver};
+    use crate::schema::metrics::{EVENTS, START_TIME};
+    use crate::schema::scopes::INITIALIZATION;
+    use crate::tracing::capture::{Metric, MetricId, Record, ScopeId};
+    use crate::tracing::enrichment::Registry;
+
+    fn record() -> Record {
+        let mut record = Record::new(7, Some(3), INITIALIZATION, 99);
+
+        record.add_metric(Metric::new(EVENTS, 5, 0));
+        record.add_metric(Metric::new(START_TIME, 123, 7));
+
+        record
+    }
+
+    #[test]
+    fn new() {
+        let registry = Registry::default();
+
+        let resolver = Resolver::new(&registry);
+
+        assert!(std::ptr::eq(resolver.registry, &registry));
+    }
+
+    #[test]
+    fn resolve() {
+        let registry = Registry::default();
+        let mut resolver = Resolver::new(&registry);
+
+        let record = record();
+        let mut buffer = Vec::new();
+
+        resolver.resolve(&record, &mut buffer);
+
+        assert_eq!(buffer.len(), 1);
+        let resolved = buffer[0].clone();
+
+        assert_eq!(resolved.scope_id, INITIALIZATION);
+        assert_eq!(resolved.scope_name, "initialization");
+        assert_eq!(resolved.payload, 99);
+        assert_eq!(resolved.payload_info, "N/A");
+
+        let parent_uuid = resolved
+            .parent_uuid
+            .expect("parent uuid should be resolved");
+        assert_ne!(resolved.instance_uuid, parent_uuid);
+
+        let events = resolved
+            .metrics
+            .iter()
+            .find(|metric| metric.metric_id == EVENTS)
+            .expect("events metric should be resolved");
+        assert_eq!(events.instance_uuid, resolved.instance_uuid);
+        assert_eq!(events.name, "events");
+        assert_eq!(events.unit, "count");
+        assert_eq!(events.value, 5);
+        assert_eq!(events.payload, 0);
+
+        let start = resolved
+            .metrics
+            .iter()
+            .find(|metric| metric.metric_id == START_TIME)
+            .expect("start metric should be resolved");
+        assert_eq!(start.name, "start_time");
+        assert_eq!(start.unit, "ns");
+        assert_eq!(start.value, 123);
+        assert_eq!(start.payload, 7);
+
+        // Resolving the same instance again must reuse its UUIDs and append.
+        resolver.resolve(&record, &mut buffer);
+
+        assert_eq!(buffer.len(), 2);
+        assert_eq!(buffer[1].instance_uuid, resolved.instance_uuid);
+        assert_eq!(buffer[1].parent_uuid, Some(parent_uuid));
+
+        // A record with the parent's instance ID resolves to the same UUID.
+        let parent_record = Record::new(3, None, INITIALIZATION, 0);
+        resolver.resolve(&parent_record, &mut buffer);
+
+        assert_eq!(buffer[2].instance_uuid, parent_uuid);
+        assert_eq!(buffer[2].parent_uuid, None);
+
+        // Unknown scope and metric IDs fall back to placeholder metadata.
+        let unknown = Record::new(8, None, ScopeId::new(0x9999, 1), 0);
+        let mut unknown_record = unknown;
+        unknown_record.add_metric(Metric::new(MetricId::new(0x9999, 1), 1, 0));
+        resolver.resolve(&unknown_record, &mut buffer);
+
+        let resolved_unknown: &ResolvedRecord = &buffer[3];
+        assert_eq!(resolved_unknown.scope_name, "N/A");
+        assert_eq!(resolved_unknown.payload_info, "N/A");
+        assert_eq!(resolved_unknown.metrics[0].name, "N/A");
+        assert_eq!(resolved_unknown.metrics[0].unit, "N/A");
+        assert_eq!(resolved_unknown.metrics[0].payload_info, "N/A");
+    }
+}

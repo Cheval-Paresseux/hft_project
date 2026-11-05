@@ -89,93 +89,150 @@ impl Registry {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{MetricMetadata, Registry, ScopeMetadata, TELEMETRY_METRICS, TELEMETRY_SCOPES};
+    use crate::tracing::capture::{MetricId, ScopeId};
+
+    const TEST_NAMESPACE: u16 = 0x9999;
+
+    fn metric(id: u16, name: &'static str) -> MetricMetadata {
+        MetricMetadata {
+            id: MetricId::new(TEST_NAMESPACE, id),
+            name,
+            unit: "unit",
+            description: "description",
+            payload_info: "payload",
+        }
+    }
+
+    fn scope(id: u16, name: &'static str) -> ScopeMetadata {
+        ScopeMetadata {
+            id: ScopeId::new(TEST_NAMESPACE, id),
+            name,
+            description: "description",
+            payload_info: "payload",
+        }
+    }
+
+    fn assert_contains_all_telemetry(registry: &Registry) {
+        for expected in TELEMETRY_METRICS {
+            assert_eq!(
+                registry.get_metric_metadata(expected.id),
+                Some(expected),
+                "missing metric {:?}",
+                expected.id
+            );
+        }
+
+        for expected in TELEMETRY_SCOPES {
+            assert_eq!(
+                registry.get_scope_metadata(expected.id),
+                Some(expected),
+                "missing scope {:?}",
+                expected.id
+            );
+        }
+    }
 
     #[test]
-    fn new_registry_is_empty() {
+    fn new() {
         let registry = Registry::new();
 
         assert!(registry.scope_map.is_empty());
         assert!(registry.metric_map.is_empty());
+        assert_eq!(
+            registry.get_scope_metadata(ScopeId::new(TEST_NAMESPACE, 1)),
+            None
+        );
+        assert_eq!(
+            registry.get_metric_metadata(MetricId::new(TEST_NAMESPACE, 1)),
+            None
+        );
     }
 
     #[test]
-    fn telemetry_registry_contains_default_metadata() {
+    fn default() {
         let registry = Registry::default();
 
-        for metric in TELEMETRY_METRICS {
-            assert!(
-                registry.get_metric_metadata(metric.id).is_some(),
-                "Missing metric {:?}",
-                metric.id
-            );
-        }
-
-        for scope in TELEMETRY_SCOPES {
-            assert!(
-                registry.get_scope_metadata(scope.id).is_some(),
-                "Missing scope {:?}",
-                scope.id
-            );
-        }
+        assert_eq!(registry.metric_map.len(), TELEMETRY_METRICS.len());
+        assert_eq!(registry.scope_map.len(), TELEMETRY_SCOPES.len());
+        assert_contains_all_telemetry(&registry);
     }
 
     #[test]
-    fn register_and_retrieve_metric() {
+    fn with_telemetry() {
+        let custom_metric = metric(1, "custom_metric");
+        let custom_scope = scope(1, "custom_scope");
+
         let mut registry = Registry::new();
+        registry.build_metrics(&[custom_metric]);
+        registry.build_scopes(&[custom_scope]);
 
-        let metadata = MetricMetadata {
-            id: MetricId::new(0x1201, 42),
-            name: "test_name",
-            unit: "test_unit",
-            description: "test_description",
-            payload_info: "test_payload",
-        };
+        let registry = registry.with_telemetry();
 
-        registry.build_metrics(&[metadata]);
-
-        let retrieved = registry
-            .get_metric_metadata(metadata.id)
-            .expect("metric should exist");
-
-        assert_eq!(retrieved.id, metadata.id);
+        assert_contains_all_telemetry(&registry);
+        assert_eq!(
+            registry.get_metric_metadata(custom_metric.id),
+            Some(&custom_metric)
+        );
+        assert_eq!(
+            registry.get_scope_metadata(custom_scope.id),
+            Some(&custom_scope)
+        );
     }
 
     #[test]
-    fn register_and_retrieve_scope() {
+    fn get_metric_metadata() {
+        let expected = metric(42, "metric");
+
         let mut registry = Registry::new();
+        registry.build_metrics(&[expected]);
 
-        let metadata = ScopeMetadata {
-            id: ScopeId::new(0x1201, 42),
-            name: "test_name",
-            description: "test_description",
-            payload_info: "test_payload",
-        };
-
-        registry.build_scopes(&[metadata]);
-
-        let retrieved = registry
-            .get_scope_metadata(metadata.id)
-            .expect("scope should exist");
-
-        assert_eq!(retrieved.id, metadata.id);
+        assert_eq!(registry.get_metric_metadata(expected.id), Some(&expected));
+        assert_eq!(
+            registry.get_metric_metadata(MetricId::new(TEST_NAMESPACE, 43)),
+            None
+        );
     }
 
     #[test]
-    fn missing_metric_returns_none() {
-        let registry = Registry::new();
+    fn get_scope_metadata() {
+        let expected = scope(42, "scope");
 
-        let result = registry.get_metric_metadata(MetricId::new(0x1201, 999));
+        let mut registry = Registry::new();
+        registry.build_scopes(&[expected]);
 
-        assert!(result.is_none());
+        assert_eq!(registry.get_scope_metadata(expected.id), Some(&expected));
+        assert_eq!(
+            registry.get_scope_metadata(ScopeId::new(TEST_NAMESPACE, 43)),
+            None
+        );
     }
 
     #[test]
-    fn missing_scope_returns_none() {
-        let registry = Registry::new();
+    fn build_metrics() {
+        let metadata = [metric(1, "first"), metric(2, "second"), metric(3, "third")];
 
-        let result = registry.get_scope_metadata(ScopeId::new(0x1201, 999));
+        let mut registry = Registry::new();
+        registry.build_metrics(&metadata);
 
-        assert!(result.is_none());
+        assert_eq!(registry.metric_map.len(), metadata.len());
+
+        for expected in &metadata {
+            assert_eq!(registry.get_metric_metadata(expected.id), Some(expected));
+        }
+    }
+
+    #[test]
+    fn build_scopes() {
+        let metadata = [scope(1, "first"), scope(2, "second"), scope(3, "third")];
+
+        let mut registry = Registry::new();
+        registry.build_scopes(&metadata);
+
+        assert_eq!(registry.scope_map.len(), metadata.len());
+
+        for expected in &metadata {
+            assert_eq!(registry.get_scope_metadata(expected.id), Some(expected));
+        }
     }
 }

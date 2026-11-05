@@ -1,4 +1,4 @@
-use super::ids::{next_id, MetricId, ScopeId, ScopeInstanceId};
+use super::ids::{MetricId, ScopeId, ScopeInstanceId, next_id};
 use super::record::{Metric, MetricPayload, MetricValue, Record, ScopePayload};
 
 use crate::collectors::time::CLOCK;
@@ -222,89 +222,189 @@ impl Scope {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crossbeam::channel;
+    use super::Scope;
+    use crate::schema::metrics::{SCOPE_END_TIME, SCOPE_START_TIME};
+    use crate::tracing::capture::{Metric, MetricId, Record, ScopeId};
+    use crossbeam::channel::{self, Receiver, Sender};
 
-    fn channel() -> (Sender<Record>, channel::Receiver<Record>) {
+    fn test_channel() -> (Sender<Record>, Receiver<Record>) {
         channel::unbounded()
     }
 
-    #[test]
-    fn scope_raii_with_start_end_metrics() {
-        let (sender, receiver) = channel();
+    fn record_after<F>(f: F) -> Record
+    where
+        F: FnOnce(&mut Scope),
+    {
+        let (sender, receiver) = test_channel();
+        let mut scope = Scope::init(ScopeId::new(0x1201, 1), sender, None);
 
-        let scope = Scope::init(ScopeId::new(0x1201, 1), sender, None);
-        drop(scope);
+        f(&mut scope);
+
+        std::mem::drop(scope);
+
+        receiver.recv().unwrap()
+    }
+
+    fn find_metric(record: &Record, id: MetricId) -> &Metric {
+        record
+            .metrics
+            .iter()
+            .find(|metric| metric.metric_id == id)
+            .unwrap_or_else(|| panic!("missing metric {id:?}"))
+    }
+
+    // ── Lifecycle ─────────────────────────────────────────────────────────────
+
+    #[test]
+    fn init() {
+        let (sender, receiver) = test_channel();
+
+        let scope = Scope::init(ScopeId::new(0x1201, 1), sender, Some(42));
+        let instance_id = scope.instance_id;
+
+        assert_eq!(scope.scope_id, ScopeId::new(0x1201, 1));
+        assert_eq!(scope.parent_id, None);
+        assert_eq!(scope.payload, 42);
+
+        std::mem::drop(scope);
 
         let record = receiver.recv().unwrap();
 
+        assert_eq!(record.instance_id, instance_id);
         assert_eq!(record.scope_id, ScopeId::new(0x1201, 1));
-        assert!(record.parent_id.is_none());
-
-        assert!(record
-            .metrics
-            .iter()
-            .any(|m| m.metric_id == SCOPE_START_TIME));
+        assert_eq!(record.parent_id, None);
+        assert_eq!(record.payload, 42);
+        assert!(
+            record
+                .metrics
+                .iter()
+                .any(|m| m.metric_id == SCOPE_START_TIME)
+        );
         assert!(record.metrics.iter().any(|m| m.metric_id == SCOPE_END_TIME));
+
+        let (sender, receiver) = test_channel();
+        let scope = Scope::init(ScopeId::new(0x1201, 2), sender, None);
+
+        std::mem::drop(scope);
+
+        assert_eq!(receiver.recv().unwrap().payload, 0);
     }
 
     #[test]
-    fn child_scope_has_parent() {
-        let (sender, receiver) = channel();
+    fn child() {
+        let (sender, receiver) = test_channel();
 
         let parent = Scope::init(ScopeId::new(0x1201, 1), sender, None);
-        let child = parent.child(ScopeId::new(0x1201, 2), None);
+        let parent_instance_id = parent.instance_id;
 
-        assert_eq!(child.parent_id, Some(parent.instance_id));
+        let child = parent.child(ScopeId::new(0x1201, 2), Some(9));
+        let child_instance_id = child.instance_id;
 
-        drop(child);
-        drop(parent);
+        assert_eq!(child.parent_id, Some(parent_instance_id));
+        assert_eq!(child.scope_id, ScopeId::new(0x1201, 2));
+        assert_eq!(child.payload, 9);
 
-        assert!(receiver.recv().is_ok());
-        assert!(receiver.recv().is_ok());
-    }
+        std::mem::drop(child);
+        std::mem::drop(parent);
 
-    #[test]
-    fn metric_is_recorded() {
-        let (sender, receiver) = channel();
-
-        let mut scope = Scope::init(ScopeId::new(0x1201, 1), sender, None);
-        scope.metric(MetricId::new(0x1201, 42), 123, None);
-        drop(scope);
-
-        let record = receiver.recv().unwrap();
-
-        assert!(record
-            .metrics
+        let records: Vec<_> = (0..2).map(|_| receiver.recv().unwrap()).collect();
+        let child_record = records
             .iter()
-            .any(|m| { m.metric_id == MetricId::new(0x1201, 42) && m.value == 123 }));
+            .find(|record| record.instance_id == child_instance_id)
+            .expect("child record should be emitted");
+
+        assert_eq!(child_record.parent_id, Some(parent_instance_id));
     }
 
     #[test]
-    fn flush_emits_record() {
-        let (sender, receiver) = channel();
+    fn metric() {
+        let record = record_after(|scope| {
+            scope.metric(MetricId::new(0x1201, 42), 123, Some(7));
+            scope.metric(MetricId::new(0x1201, 43), 456, None);
+        });
+
+        let with_payload = find_metric(&record, MetricId::new(0x1201, 42));
+        assert_eq!(with_payload.value, 123);
+        assert_eq!(with_payload.payload, 7);
+
+        let default_payload = find_metric(&record, MetricId::new(0x1201, 43));
+        assert_eq!(default_payload.value, 456);
+        assert_eq!(default_payload.payload, 0);
+    }
+
+    #[test]
+    fn flush() {
+        let (sender, receiver) = test_channel();
 
         let mut scope = Scope::init(ScopeId::new(0x1201, 1), sender, None);
+
         scope.metric(MetricId::new(0x1201, 42), 123, None);
         scope.flush();
 
-        let record = receiver.recv().unwrap();
+        let first = receiver.recv().unwrap();
+        assert!(
+            first
+                .metrics
+                .iter()
+                .any(|m| m.metric_id == MetricId::new(0x1201, 42))
+        );
 
-        assert_eq!(record.scope_id, ScopeId::new(0x1201, 1));
-        assert!(record
-            .metrics
-            .iter()
-            .any(|m| m.metric_id == MetricId::new(0x1201, 42)));
+        scope.flush();
+        assert!(receiver.try_recv().is_err());
+
+        scope.metric(MetricId::new(0x1201, 43), 456, None);
+        scope.flush();
+
+        let second = receiver.recv().unwrap();
+        assert!(
+            second
+                .metrics
+                .iter()
+                .any(|m| m.metric_id == MetricId::new(0x1201, 43))
+        );
+        assert!(
+            !second
+                .metrics
+                .iter()
+                .any(|m| m.metric_id == SCOPE_START_TIME)
+        );
+
+        std::mem::drop(scope);
+
+        let third = receiver.recv().unwrap();
+        assert!(third.metrics.iter().any(|m| m.metric_id == SCOPE_END_TIME));
+        assert!(
+            !third
+                .metrics
+                .iter()
+                .any(|m| m.metric_id == MetricId::new(0x1201, 43))
+        );
+
+        let (sender, receiver) = channel::bounded(0);
+        let mut scope = Scope::init(ScopeId::new(0x1201, 2), sender, None);
+
+        scope.metric(MetricId::new(0x1201, 44), 1, None);
+        scope.flush();
+
+        assert!(receiver.try_recv().is_err());
     }
 
     #[test]
-    fn dropped_records_are_allowed_when_channel_full() {
-        let (sender, receiver) = channel::bounded(0);
+    fn drop() {
+        let (sender, receiver) = test_channel();
 
-        let mut scope = Scope::init(ScopeId::new(0x1201, 1), sender, None);
-        scope.metric(MetricId::new(0x1201, 42), 123, None);
-        drop(scope);
+        {
+            let _scope = Scope::init(ScopeId::new(0x1201, 1), sender, None);
+        }
 
-        assert!(receiver.try_recv().is_err());
+        let record = receiver.recv().unwrap();
+
+        assert!(
+            record
+                .metrics
+                .iter()
+                .any(|m| m.metric_id == SCOPE_START_TIME)
+        );
+        assert!(record.metrics.iter().any(|m| m.metric_id == SCOPE_END_TIME));
     }
 }

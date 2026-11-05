@@ -208,3 +208,38 @@ pub static TELEMETRY_METRICS: &[MetricMetadata] = &[
         payload_info: "N/A",
     },
 ];
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  Unit Tests
+// ═══════════════════════════════════════════════════════════════════════════════
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashSet;
+
+    #[test]
+    fn telemetry_metrics() {
+        let mut ids = HashSet::new();
+        let mut names = HashSet::new();
+
+        for metric in TELEMETRY_METRICS {
+            assert!(ids.insert(metric.id), "duplicate metric id {:?}", metric.id);
+            assert!(
+                names.insert(metric.name),
+                "duplicate metric name {}",
+                metric.name
+            );
+
+            assert_eq!(metric.id.namespace, TELEMETRY_NAMESPACE);
+            assert!(!metric.name.is_empty());
+            assert!(!metric.description.is_empty());
+            assert!(!metric.payload_info.is_empty());
+
+            // Only the generic value metric intentionally has no unit.
+            assert_eq!(metric.unit.is_empty(), metric.id == VALUE);
+        }
+
+        assert_eq!(TELEMETRY_METRICS.len(), 23);
+    }
+}

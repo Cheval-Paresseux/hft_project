@@ -52,3 +52,77 @@ pub fn instant() -> Instant {
 pub fn duration(first: Instant, last: Instant) -> u64 {
     (last - first).as_nanos() as u64
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  Unit Tests
+// ═══════════════════════════════════════════════════════════════════════════════
+
+#[cfg(test)]
+mod tests {
+    use super::Clock;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    const CLOCK_TOLERANCE_NANOS: u64 = 1_000_000_000;
+
+    fn system_nanos() -> u64 {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos() as u64
+    }
+
+    #[test]
+    fn default() {
+        let clock = Clock::default();
+
+        assert!(clock.unix_nanos() > 0);
+        assert!(clock.unix_nanos().abs_diff(system_nanos()) < CLOCK_TOLERANCE_NANOS);
+    }
+
+    #[test]
+    fn unix_nanos() {
+        let clock = Clock::default();
+
+        let first = clock.unix_nanos();
+        let second = clock.unix_nanos();
+
+        assert!(second >= first);
+        assert!(first.abs_diff(system_nanos()) < CLOCK_TOLERANCE_NANOS);
+    }
+
+    #[test]
+    fn timestamp() {
+        let before = system_nanos();
+
+        let value = super::timestamp();
+
+        let after = system_nanos();
+
+        assert!(value >= before);
+        assert!(value <= after);
+    }
+
+    #[test]
+    fn instant() {
+        let first = super::instant();
+        let second = super::instant();
+
+        assert!(second >= first);
+    }
+
+    #[test]
+    fn duration() {
+        let first = super::instant();
+
+        let mut acc = 0u64;
+        for i in 0..100_000 {
+            acc = acc.wrapping_add(i);
+        }
+        std::hint::black_box(acc);
+
+        let last = super::instant();
+
+        assert!(super::duration(first, last) > 0);
+        assert_eq!(super::duration(first, first), 0);
+    }
+}

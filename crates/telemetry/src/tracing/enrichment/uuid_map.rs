@@ -25,14 +25,20 @@ impl UUIDMap {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::UUIDMap;
 
     #[test]
     fn get_or_create_scope_uuid() {
         let mut uuid_map = UUIDMap::default();
 
-        let uuid0 = uuid_map.get_or_create_scope_uuid(0);
+        let first = uuid_map.get_or_create_scope_uuid(0);
+        let second = uuid_map.get_or_create_scope_uuid(0);
+        assert_eq!(first, second);
 
-        assert!(uuid0 == uuid_map.get_or_create_scope_uuid(0))
+        let other = uuid_map.get_or_create_scope_uuid(1);
+        assert_ne!(first, other);
+
+        assert_eq!(uuid_map.get_or_create_scope_uuid(1), other);
+        assert_eq!(uuid_map.get_or_create_scope_uuid(0), first);
     }
 }

@@ -41,30 +41,43 @@ pub fn process_system_cpu_time() -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
-    fn cpu_times_are_monotonic() {
-        let before = process_cpu_time_snapshot();
+    fn process_cpu_time_snapshot() {
+        let before = super::process_cpu_time_snapshot();
 
         let mut acc = 0u64;
-        for i in 0..5_000_000 {
+        for i in 0..100_000 {
             acc = acc.wrapping_add(i);
         }
         std::hint::black_box(acc);
 
-        let after = process_cpu_time_snapshot();
+        let after = super::process_cpu_time_snapshot();
 
         assert!(after.user_time >= before.user_time);
         assert!(after.system_time >= before.system_time);
     }
 
     #[test]
-    fn snapshot_is_consistent() {
-        let first = process_cpu_time_snapshot();
-        let second = process_cpu_time_snapshot();
+    fn process_user_cpu_time() {
+        let before = super::process_cpu_time_snapshot();
 
-        assert!(second.user_time >= first.user_time);
-        assert!(second.system_time >= first.system_time);
+        let value = super::process_user_cpu_time();
+
+        let after = super::process_cpu_time_snapshot();
+
+        assert!(value >= before.user_time);
+        assert!(value <= after.user_time);
+    }
+
+    #[test]
+    fn process_system_cpu_time() {
+        let before = super::process_cpu_time_snapshot();
+
+        let value = super::process_system_cpu_time();
+
+        let after = super::process_cpu_time_snapshot();
+
+        assert!(value >= before.system_time);
+        assert!(value <= after.system_time);
     }
 }

@@ -149,105 +149,276 @@ pub fn deallocated_bytes() -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use std::alloc::{GlobalAlloc, Layout};
+    use super::ALLOCATOR;
+    use std::alloc::Layout;
+
+    fn layout(size: usize) -> Layout {
+        Layout::from_size_align(size, 8).unwrap()
+    }
+
+    // ── Snapshot ──────────────────────────────────────────────────────────────
 
     #[test]
-    fn alloc_updates_counters() {
-        let allocator = CountingAllocator::new();
-        let layout = Layout::new::<u64>();
+    fn global_allocations_snapshot() {
+        let before = super::global_allocations_snapshot();
 
-        unsafe {
-            let ptr = allocator.alloc(layout);
+        let block = Box::new([0u8; 64]);
+        let _ = std::hint::black_box(&block);
 
-            assert!(!ptr.is_null());
+        let after_alloc = super::global_allocations_snapshot();
+        assert!(after_alloc.allocations > before.allocations);
+        assert!(after_alloc.allocated_bytes >= before.allocated_bytes + 64);
 
-            assert_eq!(allocator.allocations(), 1);
+        drop(block);
+
+        let after_dealloc = super::global_allocations_snapshot();
+        assert!(after_dealloc.deallocations > after_alloc.deallocations);
+        assert!(after_dealloc.deallocated_bytes >= after_alloc.deallocated_bytes + 64);
+
+        let mut vec: Vec<u8> = Vec::with_capacity(1);
+        let before_realloc = super::global_allocations_snapshot();
+
+        vec.reserve(4096);
+        let _ = std::hint::black_box(&vec);
+
+        let after_realloc = super::global_allocations_snapshot();
+        assert!(after_realloc.reallocations > before_realloc.reallocations);
+    }
+
+    // ── CountingAllocator ─────────────────────────────────────────────────────
+
+    mod counting_allocator {
+        use super::super::CountingAllocator;
+        use super::layout;
+        use std::alloc::GlobalAlloc;
+
+        #[test]
+        fn new() {
+            let allocator = CountingAllocator::new();
+
+            assert_eq!(allocator.allocations(), 0);
             assert_eq!(allocator.deallocations(), 0);
             assert_eq!(allocator.reallocations(), 0);
-
-            assert_eq!(allocator.allocated_bytes(), layout.size() as u64);
+            assert_eq!(allocator.allocated_bytes(), 0);
             assert_eq!(allocator.deallocated_bytes(), 0);
-
-            allocator.dealloc(ptr, layout);
         }
-    }
 
-    #[test]
-    fn dealloc_updates_counters() {
-        let allocator = CountingAllocator::new();
-        let layout = Layout::new::<u64>();
+        #[test]
+        fn default() {
+            let allocator = CountingAllocator::default();
 
-        unsafe {
-            let ptr = allocator.alloc(layout);
-            allocator.dealloc(ptr, layout);
-
-            assert_eq!(allocator.allocations(), 1);
-            assert_eq!(allocator.deallocations(), 1);
-            assert_eq!(allocator.reallocations(), 0);
-
-            assert_eq!(allocator.allocated_bytes(), layout.size() as u64);
-            assert_eq!(allocator.deallocated_bytes(), layout.size() as u64);
-        }
-    }
-
-    #[test]
-    fn realloc_grow_updates_counters() {
-        let allocator = CountingAllocator::new();
-
-        unsafe {
-            let old = Layout::from_size_align(16, 8).unwrap();
-
-            let ptr = allocator.alloc(old);
-            assert!(!ptr.is_null());
-
-            let ptr = allocator.realloc(ptr, old, 64);
-            assert!(!ptr.is_null());
-
-            assert_eq!(allocator.allocations(), 1);
-            assert_eq!(allocator.reallocations(), 1);
+            assert_eq!(allocator.allocations(), 0);
             assert_eq!(allocator.deallocations(), 0);
-
-            assert_eq!(allocator.allocated_bytes(), 64);
+            assert_eq!(allocator.reallocations(), 0);
+            assert_eq!(allocator.allocated_bytes(), 0);
             assert_eq!(allocator.deallocated_bytes(), 0);
+        }
 
-            allocator.dealloc(ptr, Layout::from_size_align(64, 8).unwrap());
+        #[test]
+        fn allocations() {
+            let allocator = CountingAllocator::new();
+            let layout = layout(8);
+
+            unsafe {
+                let ptr = allocator.alloc(layout);
+                assert!(!ptr.is_null());
+
+                assert_eq!(allocator.allocations(), 1);
+
+                allocator.dealloc(ptr, layout);
+            }
+        }
+
+        #[test]
+        fn deallocations() {
+            let allocator = CountingAllocator::new();
+            let layout = layout(8);
+
+            unsafe {
+                let ptr = allocator.alloc(layout);
+                allocator.dealloc(ptr, layout);
+
+                assert_eq!(allocator.deallocations(), 1);
+            }
+        }
+
+        #[test]
+        fn reallocations() {
+            let allocator = CountingAllocator::new();
+            let old = layout(16);
+
+            unsafe {
+                let ptr = allocator.alloc(old);
+                assert!(!ptr.is_null());
+
+                let ptr = allocator.realloc(ptr, old, 64);
+                assert!(!ptr.is_null());
+
+                assert_eq!(allocator.reallocations(), 1);
+
+                allocator.dealloc(ptr, layout(64));
+            }
+        }
+
+        #[test]
+        fn allocated_bytes() {
+            let allocator = CountingAllocator::new();
+            let old = layout(16);
+
+            unsafe {
+                let ptr = allocator.alloc(old);
+                assert!(!ptr.is_null());
+                assert_eq!(allocator.allocated_bytes(), 16);
+
+                let ptr = allocator.realloc(ptr, old, 64);
+                assert!(!ptr.is_null());
+                assert_eq!(allocator.allocated_bytes(), 64);
+
+                allocator.dealloc(ptr, layout(64));
+            }
+        }
+
+        #[test]
+        fn deallocated_bytes() {
+            let allocator = CountingAllocator::new();
+            let old = layout(64);
+
+            unsafe {
+                let ptr = allocator.alloc(old);
+                assert!(!ptr.is_null());
+
+                let ptr = allocator.realloc(ptr, old, 16);
+                assert!(!ptr.is_null());
+                assert_eq!(allocator.deallocated_bytes(), 48);
+
+                allocator.dealloc(ptr, layout(16));
+                assert_eq!(allocator.deallocated_bytes(), 64);
+            }
         }
     }
 
-    #[test]
-    fn realloc_shrink_updates_counters() {
-        let allocator = CountingAllocator::new();
+    // ── GlobalAlloc ───────────────────────────────────────────────────────────
 
-        unsafe {
-            let old = Layout::from_size_align(64, 8).unwrap();
+    mod global_alloc {
+        use super::super::CountingAllocator;
+        use super::layout;
+        use std::alloc::GlobalAlloc;
 
-            let ptr = allocator.alloc(old);
-            assert!(!ptr.is_null());
+        #[test]
+        fn alloc() {
+            let allocator = CountingAllocator::new();
+            let layout = layout(8);
 
-            let ptr = allocator.realloc(ptr, old, 16);
-            assert!(!ptr.is_null());
+            unsafe {
+                let ptr = allocator.alloc(layout);
+                assert!(!ptr.is_null());
 
-            assert_eq!(allocator.allocations(), 1);
-            assert_eq!(allocator.reallocations(), 1);
+                assert_eq!(allocator.allocations(), 1);
+                assert_eq!(allocator.deallocations(), 0);
+                assert_eq!(allocator.reallocations(), 0);
+                assert_eq!(allocator.allocated_bytes(), layout.size() as u64);
+                assert_eq!(allocator.deallocated_bytes(), 0);
 
-            assert_eq!(allocator.allocated_bytes(), 64);
-            assert_eq!(allocator.deallocated_bytes(), 48);
+                allocator.dealloc(ptr, layout);
+            }
+        }
 
-            allocator.dealloc(ptr, Layout::from_size_align(16, 8).unwrap());
+        #[test]
+        fn dealloc() {
+            let allocator = CountingAllocator::new();
+            let layout = layout(8);
 
-            assert_eq!(allocator.deallocations(), 1);
-            assert_eq!(allocator.deallocated_bytes(), 64);
+            unsafe {
+                let ptr = allocator.alloc(layout);
+                allocator.dealloc(ptr, layout);
+
+                assert_eq!(allocator.allocations(), 1);
+                assert_eq!(allocator.deallocations(), 1);
+                assert_eq!(allocator.allocated_bytes(), layout.size() as u64);
+                assert_eq!(allocator.deallocated_bytes(), layout.size() as u64);
+            }
+        }
+
+        #[test]
+        fn realloc() {
+            let allocator = CountingAllocator::new();
+            let old = layout(16);
+
+            unsafe {
+                let ptr = allocator.alloc(old);
+                assert!(!ptr.is_null());
+
+                let ptr = allocator.realloc(ptr, old, 64);
+                assert!(!ptr.is_null());
+
+                assert_eq!(allocator.reallocations(), 1);
+                assert_eq!(allocator.allocated_bytes(), 64);
+                assert_eq!(allocator.deallocated_bytes(), 0);
+
+                let ptr = allocator.realloc(ptr, layout(64), 16);
+                assert!(!ptr.is_null());
+
+                assert_eq!(allocator.reallocations(), 2);
+                assert_eq!(allocator.deallocated_bytes(), 48);
+
+                allocator.dealloc(ptr, layout(16));
+                assert_eq!(allocator.deallocated_bytes(), 64);
+            }
         }
     }
 
-    #[test]
-    fn free_functions_forward_to_global_allocator() {
-        assert_eq!(allocations(), ALLOCATOR.allocations());
-        assert_eq!(deallocations(), ALLOCATOR.deallocations());
-        assert_eq!(reallocations(), ALLOCATOR.reallocations());
+    // ── Free getters ──────────────────────────────────────────────────────────
 
-        assert_eq!(allocated_bytes(), ALLOCATOR.allocated_bytes());
-        assert_eq!(deallocated_bytes(), ALLOCATOR.deallocated_bytes());
+    #[test]
+    fn allocations() {
+        let before = ALLOCATOR.allocations();
+
+        let block = Box::new(0u8);
+        let _ = std::hint::black_box(&block);
+
+        assert!(super::allocations() > before);
+
+        drop(block);
+    }
+
+    #[test]
+    fn deallocations() {
+        let block = Box::new(0u8);
+        let before = ALLOCATOR.deallocations();
+
+        drop(block);
+
+        assert!(super::deallocations() > before);
+    }
+
+    #[test]
+    fn reallocations() {
+        let mut vec: Vec<u8> = Vec::with_capacity(1);
+        let before = ALLOCATOR.reallocations();
+
+        vec.reserve(4096);
+        let _ = std::hint::black_box(&vec);
+
+        assert!(super::reallocations() > before);
+    }
+
+    #[test]
+    fn allocated_bytes() {
+        let before = ALLOCATOR.allocated_bytes();
+
+        let vec = vec![0u8; 1024];
+        let _ = std::hint::black_box(&vec);
+
+        assert!(super::allocated_bytes() >= before + 1024);
+    }
+
+    #[test]
+    fn deallocated_bytes() {
+        let vec = vec![0u8; 1024];
+        let before = ALLOCATOR.deallocated_bytes();
+
+        drop(vec);
+
+        assert!(super::deallocated_bytes() >= before + 1024);
     }
 }
