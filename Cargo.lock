@@ -81,6 +81,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "book"
+version = "0.1.0"
+dependencies = [
+ "thiserror",
+ "types",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.20.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -767,7 +775,7 @@ checksum = "0ceec5bc11778974d1bcb055b18002eba7f4b3518b6a0081b3af5f21666da9ad"
 name = "matching"
 version = "0.1.0"
 dependencies = [
- "orderbook",
+ "book",
  "telemetry",
 ]
 
@@ -883,7 +891,6 @@ name = "playground"
 version = "0.1.0"
 dependencies = [
  "dotenvy",
- "orderbook",
  "sqlx",
  "telemetry",
  "tokio",

@@ -3,8 +3,8 @@ members = ["bin/playground", "crates/*"]
 resolver = "2"
 
 [workspace.dependencies]
+book = { path = "crates/book" }
 matching = { path = "crates/matching" }
-orderbook = { path = "crates/orderbook" }
 telemetry = { path = "crates/telemetry" }
 types = { path = "crates/types" }
 
