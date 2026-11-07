@@ -1,8 +1,0 @@
-[package]
-name = "orderbook"
-version = "0.1.0"
-edition = "2024"
-
-[dependencies]
-types.workspace = true
-thiserror = "2.0.19"

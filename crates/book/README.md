@@ -13,17 +13,17 @@ Matching rules, execution decisions, and trade generation belong to the matching
 ## Example
 
 ```rust
-use orderbook::level3::{L3OrderBook, VecL3OrderBook};
-use orderbook::trigger::{TriggerBook, TriggerCondition, VecTriggerBook};
+use book::level3::{L3OrderBook, VecL3OrderBook};
+use book::trigger::{TriggerBook, TriggerCondition, VecTriggerBook};
 
 use types::order::{
     LimitOrder, Order, OrderId, OrderSide, Price, Quantity, RestingLimitOrder, StopLimitOrder,
     TimeInForce, Timestamp,
 };
 
-let mut book = VecL3OrderBook::<LimitOrder, RestingLimitOrder>::default();
+let mut book = VecL3OrderBook::<LimitOrder, RestingLimitOrder>::new();
 
-book.add_order(LimitOrder::new(
+book.insert(LimitOrder::new(
     OrderId::new(1),
     Quantity::new(10),
     Timestamp::new(1_000),
@@ -34,24 +34,27 @@ book.add_order(LimitOrder::new(
 .unwrap();
 
 // Best order on the bid side.
-let (side, price, order) = book.top_order(OrderSide::Bid).unwrap();
+let (side, price, order) = book.best_order(OrderSide::Bid).unwrap();
 assert_eq!(
     (side, price, order.quantity()),
     (OrderSide::Bid, Price::new(100), Quantity::new(10))
 );
 
-// Partially fill, resize, then cancel the order.
-book.fill_order(OrderId::new(1), Quantity::new(4)).unwrap();
-book.modify_order(OrderId::new(1), Quantity::new(5))
-    .unwrap();
-book.cancel_order(OrderId::new(1)).unwrap();
-assert!(book.top_order(OrderSide::Bid).is_none());
+// Reduce the order to its remaining quantity, then remove it.
+book.reduce(OrderId::new(1), Quantity::new(5)).unwrap();
+assert_eq!(
+    book.quantity_at(OrderSide::Bid, Price::new(100)),
+    Quantity::new(5)
+);
+
+book.remove(OrderId::new(1)).unwrap();
+assert!(book.best_order(OrderSide::Bid).is_none());
 
 // Trigger book releases orders once the observed price crosses their threshold.
 let mut triggers = VecTriggerBook::<Price, StopLimitOrder>::new(TriggerCondition::AtOrAbove);
 
 triggers
-    .add_order(
+    .insert(
         Price::new(105),
         StopLimitOrder::new(
             OrderId::new(2),
@@ -65,8 +68,8 @@ triggers
     )
     .unwrap();
 
-assert!(triggers.trigger_orders(&Price::new(104)).is_empty());
-let triggered = triggers.trigger_orders(&Price::new(105));
+assert!(triggers.trigger(Price::new(104)).is_empty());
+let triggered = triggers.trigger(Price::new(105));
 assert_eq!(triggered.len(), 1);
 ```
 
