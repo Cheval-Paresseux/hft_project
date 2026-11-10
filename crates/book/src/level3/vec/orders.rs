@@ -7,10 +7,6 @@ use types::order::{
 
 // ── Resting Orders ───────────────────────────────────────────────────────────
 
-/// Zero-allocation iterator over the resting orders of a book side.
-///
-/// The iterator walks a borrowed slice of price levels in book order and yields
-/// each order together with its side and price, skipping empty levels.
 pub struct VecRestingOrders<'a, R> {
     side: OrderSide,
     levels: &'a [VecL3BookLevel<R>],
@@ -61,8 +57,8 @@ impl<'a, R: Order> Iterator for VecRestingOrders<'a, R> {
 mod tests {
     use super::*;
     use types::order::{
-        orders::{LimitOrder, RestingLimitOrder},
         TimeInForce,
+        orders::{LimitOrder, RestingLimitOrder},
     };
 
     fn price(value: u64) -> Price {

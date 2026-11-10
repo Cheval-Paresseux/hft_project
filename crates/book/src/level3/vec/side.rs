@@ -1,6 +1,6 @@
 use super::{level::VecL3BookLevel, orders::VecRestingOrders};
 
-use crate::level3::common::OrderBookError;
+use crate::common::{BookError, OrderMutationsPolicy};
 
 use types::order::{
     fields::{OrderId, OrderSide, Price, Quantity},
@@ -29,13 +29,13 @@ impl<R> VecL3BookSide<R> {
         }
     }
 
-    fn find_level(&self, price: Price) -> Result<usize, OrderBookError> {
+    fn find_level(&self, price: Price) -> Result<usize, BookError> {
         let position = self.find_level_pos(price);
 
         if position < self.levels.len() && self.levels[position].price == price {
             Ok(position)
         } else {
-            Err(OrderBookError::PriceLevelNotFound { price })
+            Err(BookError::PriceLevelNotFound { price })
         }
     }
 
@@ -85,7 +85,7 @@ impl<R> VecL3BookSide<R> {
 // ── Book Mutations ────────────────────────────────────────────────────────────
 
 impl<R: Order> VecL3BookSide<R> {
-    pub fn insert<I>(&mut self, order: I) -> Result<(), OrderBookError>
+    pub fn insert<I>(&mut self, order: I) -> Result<(), BookError>
     where
         I: IncomingOrder,
         R: From<I>,
@@ -95,7 +95,7 @@ impl<R: Order> VecL3BookSide<R> {
         self.levels[position].insert(order)
     }
 
-    pub fn remove(&mut self, order_id: OrderId, price: Price) -> Result<(), OrderBookError> {
+    pub fn remove(&mut self, order_id: OrderId, price: Price) -> Result<(), BookError> {
         let position = self.find_level(price)?;
 
         self.levels[position].remove(order_id)?;
@@ -106,16 +106,39 @@ impl<R: Order> VecL3BookSide<R> {
 
         Ok(())
     }
+}
 
+// ── Orders Mutations ──────────────────────────────────────────────────────────
+
+impl<R: Order> VecL3BookSide<R> {
     pub fn reduce(
         &mut self,
+        policy: &OrderMutationsPolicy,
         order_id: OrderId,
         price: Price,
         remaining_quantity: Quantity,
-    ) -> Result<(), OrderBookError> {
+    ) -> Result<(), BookError> {
         let position = self.find_level(price)?;
 
-        self.levels[position].reduce(order_id, remaining_quantity)
+        self.levels[position].reduce(policy, order_id, remaining_quantity)?;
+
+        if self.levels[position].is_empty() {
+            self.levels.remove(position);
+        }
+
+        Ok(())
+    }
+
+    pub fn increase(
+        &mut self,
+        policy: &OrderMutationsPolicy,
+        order_id: OrderId,
+        price: Price,
+        remaining_quantity: Quantity,
+    ) -> Result<(), BookError> {
+        let position = self.find_level(price)?;
+
+        self.levels[position].increase(policy, order_id, remaining_quantity)
     }
 }
 
@@ -280,7 +303,7 @@ mod tests {
 
         assert_eq!(
             ask_side.remove(42.into(), price(100)),
-            Err(OrderBookError::PriceLevelNotFound { price: price(100) })
+            Err(BookError::PriceLevelNotFound { price: price(100) })
         );
     }
 
@@ -288,13 +311,48 @@ mod tests {
     fn reduce() {
         let mut ask_side = side(OrderSide::Ask);
         ask_side.insert(limit(1, 5, OrderSide::Ask, 100)).unwrap();
-
-        assert_eq!(ask_side.reduce(1.into(), price(100), quantity(2)), Ok(()));
-        assert_eq!(ask_side.quantity_at(price(100)), quantity(2));
+        ask_side.insert(limit(2, 3, OrderSide::Ask, 100)).unwrap();
 
         assert_eq!(
-            ask_side.reduce(42.into(), price(100), quantity(1)),
-            Err(OrderBookError::OrderIdNotFound { order_id: 42.into() })
+            ask_side.reduce(&OrderMutationsPolicy::KeepPriority, 1.into(), price(100), quantity(2)),
+            Ok(())
+        );
+        assert_eq!(ask_side.quantity_at(price(100)), quantity(5));
+
+        assert_eq!(
+            ask_side.reduce(&OrderMutationsPolicy::KeepPriority, 42.into(), price(100), quantity(1)),
+            Err(BookError::OrderIdNotFound { order_id: 42.into() })
+        );
+
+        assert_eq!(
+            ask_side.reduce(&OrderMutationsPolicy::KeepPriority, 2.into(), price(100), quantity(0)),
+            Ok(())
+        );
+        assert_eq!(ask_side.levels.len(), 1);
+
+        assert_eq!(
+            ask_side.reduce(&OrderMutationsPolicy::KeepPriority, 1.into(), price(100), quantity(0)),
+            Ok(())
+        );
+        assert!(ask_side.levels.is_empty());
+        assert_eq!(ask_side.quantity_at(price(100)), quantity(0));
+    }
+
+    #[test]
+    fn increase() {
+        let mut ask_side = side(OrderSide::Ask);
+        ask_side.insert(limit(1, 5, OrderSide::Ask, 100)).unwrap();
+        ask_side.insert(limit(2, 3, OrderSide::Ask, 100)).unwrap();
+
+        assert_eq!(
+            ask_side.increase(&OrderMutationsPolicy::KeepPriority, 1.into(), price(100), quantity(12)),
+            Ok(())
+        );
+        assert_eq!(ask_side.quantity_at(price(100)), quantity(15));
+
+        assert_eq!(
+            ask_side.increase(&OrderMutationsPolicy::KeepPriority, 42.into(), price(100), quantity(1)),
+            Err(BookError::OrderIdNotFound { order_id: 42.into() })
         );
     }
 

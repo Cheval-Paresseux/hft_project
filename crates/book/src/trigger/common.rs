@@ -1,23 +1,7 @@
-use types::order::{
-    fields::{OrderId, Quantity},
-    orders::{Order, OrderError},
-};
+use crate::common::BookError;
 
-use thiserror::Error;
-
-// ── Trigger Book Error ────────────────────────────────────────────────────────
-
-#[derive(Error, Debug, PartialEq, Eq)]
-pub enum TriggerBookError {
-    #[error(transparent)]
-    OrderError(#[from] OrderError),
-
-    #[error("order with id {order_id:?} not found")]
-    OrderIdNotFound { order_id: OrderId },
-
-    #[error("order with id {order_id:?} already exists")]
-    OrderIdAlreadyExists { order_id: OrderId },
-}
+use types::order::fields::{OrderId, Quantity};
+use types::order::orders::Order;
 
 // ── Trigger Condition ─────────────────────────────────────────────────────────
 
@@ -50,16 +34,19 @@ pub trait TriggerBook {
 
     // ── Book Mutations ────────────────────────────────────────────────────────
 
-    fn insert(&mut self, threshold: Self::Threshold, order: Self::Order) -> Result<(), TriggerBookError>;
-    fn remove(&mut self, order_id: OrderId) -> Result<(), TriggerBookError>;
-
-    fn reduce(&mut self, order_id: OrderId, remaining_quantity: Quantity) -> Result<(), TriggerBookError>;
+    fn insert(&mut self, threshold: Self::Threshold, order: Self::Order) -> Result<(), BookError>;
+    fn remove(&mut self, order_id: OrderId) -> Result<(), BookError>;
     fn replace(
         &mut self,
         old_order_id: OrderId,
         new_threshold: Self::Threshold,
         new_order: Self::Order,
-    ) -> Result<(), TriggerBookError>;
+    ) -> Result<(), BookError>;
+
+    // ── Orders Mutations ──────────────────────────────────────────────────────
+
+    fn reduce(&mut self, order_id: OrderId, remaining_quantity: Quantity) -> Result<(), BookError>;
+    fn increase(&mut self, order_id: OrderId, remaining_quantity: Quantity) -> Result<(), BookError>;
 
     // ── Trigger Evaluation ───────────────────────────────────────────────────
 

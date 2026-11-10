@@ -1,6 +1,7 @@
 use super::{orders::VecRestingOrders, side::VecL3BookSide};
 
-use crate::level3::common::{L3OrderBook, OrderBookError};
+use crate::common::{BookError, OrderMutationsPolicy};
+use crate::level3::common::L3OrderBook;
 
 use types::order::{
     fields::{OrderId, OrderSide, Price, Quantity},
@@ -14,30 +15,34 @@ use std::{collections::HashMap, marker::PhantomData};
 pub struct VecL3OrderBook<I, R> {
     ask_side: VecL3BookSide<R>,
     bid_side: VecL3BookSide<R>,
-
     orders_map: HashMap<OrderId, (OrderSide, Price)>,
+
+    reduce_policy: OrderMutationsPolicy,
+    increase_policy: OrderMutationsPolicy,
 
     _incoming: PhantomData<I>,
 }
 
 impl<I, R> VecL3OrderBook<I, R> {
     #[allow(clippy::new_without_default)]
-    pub fn new() -> Self {
+    pub fn new(reduce_policy: OrderMutationsPolicy, increase_policy: OrderMutationsPolicy) -> Self {
         Self {
             ask_side: VecL3BookSide::new(OrderSide::Ask),
             bid_side: VecL3BookSide::new(OrderSide::Bid),
-
             orders_map: HashMap::new(),
+
+            reduce_policy,
+            increase_policy,
 
             _incoming: PhantomData,
         }
     }
 
-    fn find_order(&self, order_id: OrderId) -> Result<(OrderSide, Price), OrderBookError> {
+    fn find_order(&self, order_id: OrderId) -> Result<(OrderSide, Price), BookError> {
         self.orders_map
             .get(&order_id)
             .copied()
-            .ok_or(OrderBookError::OrderIdNotFound { order_id })
+            .ok_or(BookError::OrderIdNotFound { order_id })
     }
 }
 
@@ -58,11 +63,11 @@ where
 
     // ── Book Mutations ────────────────────────────────────────────────────────
 
-    fn insert(&mut self, order: Self::Incoming) -> Result<(), OrderBookError> {
+    fn insert(&mut self, order: Self::Incoming) -> Result<(), BookError> {
         let order_id = order.id();
 
         if self.orders_map.contains_key(&order_id) {
-            return Err(OrderBookError::OrderIdAlreadyExists { order_id });
+            return Err(BookError::OrderIdAlreadyExists { order_id });
         }
 
         let side = order.side();
@@ -78,7 +83,7 @@ where
         Ok(())
     }
 
-    fn remove(&mut self, order_id: OrderId) -> Result<(), OrderBookError> {
+    fn remove(&mut self, order_id: OrderId) -> Result<(), BookError> {
         let (side, price) = self.find_order(order_id)?;
 
         match side {
@@ -91,26 +96,51 @@ where
         Ok(())
     }
 
-    fn reduce(&mut self, order_id: OrderId, remaining_quantity: Quantity) -> Result<(), OrderBookError> {
-        let (side, price) = self.find_order(order_id)?;
-
-        match side {
-            OrderSide::Bid => self.bid_side.reduce(order_id, price, remaining_quantity),
-            OrderSide::Ask => self.ask_side.reduce(order_id, price, remaining_quantity),
-        }
-    }
-
-    fn replace(&mut self, old_order_id: OrderId, new_order: Self::Incoming) -> Result<(), OrderBookError> {
+    fn replace(&mut self, old_order_id: OrderId, new_order: Self::Incoming) -> Result<(), BookError> {
         self.find_order(old_order_id)?;
 
         let new_order_id = new_order.id();
 
         if new_order_id != old_order_id && self.orders_map.contains_key(&new_order_id) {
-            return Err(OrderBookError::OrderIdAlreadyExists { order_id: new_order_id });
+            return Err(BookError::OrderIdAlreadyExists { order_id: new_order_id });
         }
 
         self.remove(old_order_id)?;
         self.insert(new_order)
+    }
+
+    // ── Orders Mutations ──────────────────────────────────────────────────────
+
+    fn reduce(&mut self, order_id: OrderId, remaining_quantity: Quantity) -> Result<(), BookError> {
+        let (side, price) = self.find_order(order_id)?;
+
+        match side {
+            OrderSide::Bid => self
+                .bid_side
+                .reduce(&self.reduce_policy, order_id, price, remaining_quantity)?,
+            OrderSide::Ask => self
+                .ask_side
+                .reduce(&self.reduce_policy, order_id, price, remaining_quantity)?,
+        }
+
+        if remaining_quantity.is_zero() {
+            self.orders_map.remove(&order_id);
+        }
+
+        Ok(())
+    }
+
+    fn increase(&mut self, order_id: OrderId, remaining_quantity: Quantity) -> Result<(), BookError> {
+        let (side, price) = self.find_order(order_id)?;
+
+        match side {
+            OrderSide::Bid => self
+                .bid_side
+                .increase(&self.increase_policy, order_id, price, remaining_quantity),
+            OrderSide::Ask => self
+                .ask_side
+                .increase(&self.increase_policy, order_id, price, remaining_quantity),
+        }
     }
 
     // ── Peek Orders ──────────────────────────────────────────────────────────
@@ -185,7 +215,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use types::order::{LimitOrder, TimeInForce, orders::RestingLimitOrder};
+    use types::order::{LimitOrder, OrderError, TimeInForce, orders::RestingLimitOrder};
 
     fn price(value: u64) -> Price {
         Price::new(value)
@@ -207,7 +237,7 @@ mod tests {
     }
 
     fn make_book() -> VecL3OrderBook<LimitOrder, RestingLimitOrder> {
-        VecL3OrderBook::new()
+        VecL3OrderBook::new(OrderMutationsPolicy::KeepPriority, OrderMutationsPolicy::KeepPriority)
     }
 
     fn sample_book() -> VecL3OrderBook<LimitOrder, RestingLimitOrder> {
@@ -253,7 +283,7 @@ mod tests {
 
         assert_eq!(
             book.insert(limit(1, 5, OrderSide::Bid, 105)),
-            Err(OrderBookError::OrderIdAlreadyExists { order_id: 1.into() })
+            Err(BookError::OrderIdAlreadyExists { order_id: 1.into() })
         );
         assert_eq!(book.quantity_at(OrderSide::Bid, price(105)), quantity(0));
     }
@@ -268,20 +298,7 @@ mod tests {
 
         assert_eq!(
             book.remove(42.into()),
-            Err(OrderBookError::OrderIdNotFound { order_id: 42.into() })
-        );
-    }
-
-    #[test]
-    fn reduce() {
-        let mut book = sample_book();
-
-        assert_eq!(book.reduce(1.into(), quantity(2)), Ok(()));
-        assert_eq!(book.quantity_at(OrderSide::Bid, price(100)), quantity(9));
-
-        assert_eq!(
-            book.reduce(42.into(), quantity(1)),
-            Err(OrderBookError::OrderIdNotFound { order_id: 42.into() })
+            Err(BookError::OrderIdNotFound { order_id: 42.into() })
         );
     }
 
@@ -296,12 +313,67 @@ mod tests {
 
         assert_eq!(
             book.replace(42.into(), limit(6, 1, OrderSide::Bid, 100)),
-            Err(OrderBookError::OrderIdNotFound { order_id: 42.into() })
+            Err(BookError::OrderIdNotFound { order_id: 42.into() })
         );
 
         assert_eq!(
             book.replace(1.into(), limit(2, 1, OrderSide::Bid, 100)),
-            Err(OrderBookError::OrderIdAlreadyExists { order_id: 2.into() })
+            Err(BookError::OrderIdAlreadyExists { order_id: 2.into() })
+        );
+    }
+
+    #[test]
+    fn reduce() {
+        let mut book = sample_book();
+
+        assert_eq!(
+            book.reduce(1.into(), quantity(50)),
+            Err(BookError::OrderError(OrderError::ReductionTooLarge {
+                order_id: 1.into(),
+                current: quantity(5),
+                new: quantity(50),
+            }))
+        );
+
+        assert_eq!(book.reduce(1.into(), quantity(2)), Ok(()));
+        assert_eq!(book.quantity_at(OrderSide::Bid, price(100)), quantity(9));
+
+        assert_eq!(
+            book.reduce(42.into(), quantity(1)),
+            Err(BookError::OrderIdNotFound { order_id: 42.into() })
+        );
+
+        assert_eq!(book.reduce(2.into(), quantity(0)), Ok(()));
+        assert_eq!(book.reduce(1.into(), quantity(0)), Ok(()));
+
+        assert!(book.best_order_at(OrderSide::Bid, price(100)).is_none());
+        assert_eq!(book.quantity_at(OrderSide::Bid, price(100)), quantity(0));
+        assert_eq!(
+            book.reduce(1.into(), quantity(1)),
+            Err(BookError::OrderIdNotFound { order_id: 1.into() })
+        );
+    }
+
+    #[test]
+    fn increase() {
+        let mut book = sample_book();
+
+        assert_eq!(book.increase(1.into(), quantity(20)), Ok(()));
+        assert_eq!(book.quantity_at(OrderSide::Bid, price(100)), quantity(27));
+
+        assert_eq!(
+            book.increase(1.into(), quantity(3)),
+            Err(BookError::OrderError(OrderError::IncreaseTooSmall {
+                order_id: 1.into(),
+                current: quantity(20),
+                new: quantity(3),
+            }))
+        );
+        assert_eq!(book.quantity_at(OrderSide::Bid, price(100)), quantity(27));
+
+        assert_eq!(
+            book.increase(42.into(), quantity(1)),
+            Err(BookError::OrderIdNotFound { order_id: 42.into() })
         );
     }
 

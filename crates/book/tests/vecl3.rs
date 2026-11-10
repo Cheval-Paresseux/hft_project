@@ -1,9 +1,12 @@
-use book::level3::{L3OrderBook, OrderBookError, VecL3OrderBook};
+use book::{
+    OrderMutationsPolicy,
+    level3::{BookError, L3OrderBook, VecL3OrderBook},
+};
 
 use types::order::{
+    TimeInForce,
     fields::{OrderId, OrderSide, Price, Quantity},
     orders::{LimitOrder, Order, RestingLimitOrder},
-    TimeInForce,
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -28,7 +31,7 @@ fn limit(id: u64, quantity: u64, side: OrderSide, price: u64) -> LimitOrder {
 }
 
 fn make_book() -> VecL3OrderBook<LimitOrder, RestingLimitOrder> {
-    VecL3OrderBook::new()
+    VecL3OrderBook::new(OrderMutationsPolicy::KeepPriority, OrderMutationsPolicy::KeepPriority)
 }
 
 fn entries<'a>(
@@ -66,7 +69,7 @@ fn level3_book_lifecycle() {
 
     assert_eq!(
         book.insert(limit(1, 1, OrderSide::Bid, 101)),
-        Err(OrderBookError::OrderIdAlreadyExists { order_id: 1.into() })
+        Err(BookError::OrderIdAlreadyExists { order_id: 1.into() })
     );
 
     // ── Best orders and lookups ───────────────────────────────────────────────
@@ -166,7 +169,7 @@ fn level3_book_lifecycle() {
     assert_eq!(book.quantity_at(OrderSide::Bid, price(100)), quantity(12));
     assert_eq!(
         book.remove(1.into()),
-        Err(OrderBookError::OrderIdNotFound { order_id: 1.into() })
+        Err(BookError::OrderIdNotFound { order_id: 1.into() })
     );
 
     book.remove(2.into()).unwrap();

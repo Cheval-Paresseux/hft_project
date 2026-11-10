@@ -1,4 +1,4 @@
-use crate::level3::common::OrderBookError;
+use crate::common::{BookError, OrderMutationsPolicy};
 
 use types::order::{
     fields::{OrderId, Price, Quantity},
@@ -45,14 +45,14 @@ impl<R> VecL3BookLevel<R> {
 // ── Book Mutations ────────────────────────────────────────────────────────────
 
 impl<R: Order> VecL3BookLevel<R> {
-    fn find_position(&self, order_id: OrderId) -> Result<usize, OrderBookError> {
+    fn find_position(&self, order_id: OrderId) -> Result<usize, BookError> {
         self.orders
             .iter()
             .position(|order| order.id() == order_id)
-            .ok_or(OrderBookError::OrderIdNotFound { order_id })
+            .ok_or(BookError::OrderIdNotFound { order_id })
     }
 
-    pub fn insert<I>(&mut self, order: I) -> Result<(), OrderBookError>
+    pub fn insert<I>(&mut self, order: I) -> Result<(), BookError>
     where
         I: IncomingOrder,
         R: From<I>,
@@ -63,7 +63,7 @@ impl<R: Order> VecL3BookLevel<R> {
         Ok(())
     }
 
-    pub fn remove(&mut self, order_id: OrderId) -> Result<(), OrderBookError> {
+    pub fn remove(&mut self, order_id: OrderId) -> Result<(), BookError> {
         let position = self.find_position(order_id)?;
         let quantity = self.orders[position].quantity();
 
@@ -72,19 +72,57 @@ impl<R: Order> VecL3BookLevel<R> {
 
         Ok(())
     }
+}
 
-    pub fn reduce(&mut self, order_id: OrderId, remaining_quantity: Quantity) -> Result<(), OrderBookError> {
+// ── Orders Mutations ──────────────────────────────────────────────────────────
+
+impl<R: Order> VecL3BookLevel<R> {
+    fn apply_policy(&mut self, policy: &OrderMutationsPolicy, position: usize) {
+        match policy {
+            OrderMutationsPolicy::KeepPriority => {}
+            OrderMutationsPolicy::LosePriority => {
+                let order = self.orders.remove(position);
+                self.orders.push(order);
+            }
+        }
+    }
+
+    pub fn reduce(
+        &mut self,
+        policy: &OrderMutationsPolicy,
+        order_id: OrderId,
+        remaining_quantity: Quantity,
+    ) -> Result<(), BookError> {
         let position = self.find_position(order_id)?;
         let old_quantity = self.orders[position].quantity();
-        let delta = Quantity::new(remaining_quantity.get().abs_diff(old_quantity.get()));
+        let qty_delta = sub_quantities(old_quantity, remaining_quantity);
 
-        self.total_quantity = if remaining_quantity >= old_quantity {
-            add_quantities(self.total_quantity, delta)
+        self.orders[position].reduce(remaining_quantity)?;
+        self.total_quantity = sub_quantities(self.total_quantity, qty_delta);
+
+        if remaining_quantity.is_zero() {
+            self.orders.remove(position);
         } else {
-            sub_quantities(self.total_quantity, delta)
-        };
+            self.apply_policy(policy, position);
+        }
 
-        self.orders[position].set_quantity(remaining_quantity);
+        Ok(())
+    }
+
+    pub fn increase(
+        &mut self,
+        policy: &OrderMutationsPolicy,
+        order_id: OrderId,
+        remaining_quantity: Quantity,
+    ) -> Result<(), BookError> {
+        let position = self.find_position(order_id)?;
+        let old_quantity = self.orders[position].quantity();
+        let qty_delta = sub_quantities(remaining_quantity, old_quantity);
+
+        self.orders[position].increase(remaining_quantity)?;
+        self.total_quantity = add_quantities(self.total_quantity, qty_delta);
+
+        self.apply_policy(policy, position);
 
         Ok(())
     }
@@ -112,7 +150,7 @@ impl<R: Order> VecL3BookLevel<R> {
 mod tests {
     use super::*;
     use types::order::{
-        TimeInForce,
+        OrderError, TimeInForce,
         fields::OrderSide,
         orders::{LimitOrder, RestingLimitOrder},
     };
@@ -185,7 +223,7 @@ mod tests {
 
         assert_eq!(
             level.remove(42.into()),
-            Err(OrderBookError::OrderIdNotFound { order_id: 42.into() })
+            Err(BookError::OrderIdNotFound { order_id: 42.into() })
         );
     }
 
@@ -193,18 +231,83 @@ mod tests {
     fn reduce() {
         let mut level = make_level();
         level.insert(limit(1, 10)).unwrap();
-
-        assert_eq!(level.reduce(1.into(), quantity(6)), Ok(()));
-        assert_eq!(level.orders[0].quantity(), quantity(6));
-        assert_eq!(level.total_quantity, quantity(6));
-
-        assert_eq!(level.reduce(1.into(), quantity(8)), Ok(()));
-        assert_eq!(level.orders[0].quantity(), quantity(8));
-        assert_eq!(level.total_quantity, quantity(8));
+        level.insert(limit(2, 5)).unwrap();
 
         assert_eq!(
-            level.reduce(42.into(), quantity(1)),
-            Err(OrderBookError::OrderIdNotFound { order_id: 42.into() })
+            level.reduce(&OrderMutationsPolicy::KeepPriority, 1.into(), quantity(6)),
+            Ok(())
+        );
+        assert_eq!(level.orders[0].id(), 1.into());
+        assert_eq!(level.total_quantity, quantity(11));
+
+        assert_eq!(
+            level.reduce(&OrderMutationsPolicy::LosePriority, 1.into(), quantity(4)),
+            Ok(())
+        );
+        assert_eq!(level.orders[1].id(), 1.into());
+        assert_eq!(level.best_order().map(|order| order.id()), Some(2.into()));
+        assert_eq!(level.total_quantity, quantity(9));
+
+        assert_eq!(
+            level.reduce(&OrderMutationsPolicy::KeepPriority, 1.into(), quantity(8)),
+            Err(BookError::OrderError(OrderError::ReductionTooLarge {
+                order_id: 1.into(),
+                current: quantity(4),
+                new: quantity(8),
+            }))
+        );
+        assert_eq!(level.orders[1].quantity(), quantity(4));
+
+        assert_eq!(
+            level.reduce(&OrderMutationsPolicy::KeepPriority, 42.into(), quantity(1)),
+            Err(BookError::OrderIdNotFound { order_id: 42.into() })
+        );
+
+        assert_eq!(
+            level.reduce(&OrderMutationsPolicy::KeepPriority, 1.into(), quantity(0)),
+            Ok(())
+        );
+        assert_eq!(
+            level.orders().iter().map(|order| order.id()).collect::<Vec<_>>(),
+            vec![2.into()]
+        );
+        assert_eq!(level.total_quantity, quantity(5));
+    }
+
+    #[test]
+    fn increase() {
+        let mut level = make_level();
+        level.insert(limit(1, 10)).unwrap();
+        level.insert(limit(2, 5)).unwrap();
+
+        assert_eq!(
+            level.increase(&OrderMutationsPolicy::KeepPriority, 1.into(), quantity(20)),
+            Ok(())
+        );
+        assert_eq!(level.orders[0].id(), 1.into());
+        assert_eq!(level.total_quantity, quantity(25));
+
+        assert_eq!(
+            level.increase(&OrderMutationsPolicy::LosePriority, 1.into(), quantity(30)),
+            Ok(())
+        );
+        assert_eq!(level.orders[1].id(), 1.into());
+        assert_eq!(level.best_order().map(|order| order.id()), Some(2.into()));
+        assert_eq!(level.total_quantity, quantity(35));
+
+        assert_eq!(
+            level.increase(&OrderMutationsPolicy::KeepPriority, 1.into(), quantity(5)),
+            Err(BookError::OrderError(OrderError::IncreaseTooSmall {
+                order_id: 1.into(),
+                current: quantity(30),
+                new: quantity(5),
+            }))
+        );
+        assert_eq!(level.orders[1].quantity(), quantity(30));
+
+        assert_eq!(
+            level.increase(&OrderMutationsPolicy::KeepPriority, 42.into(), quantity(1)),
+            Err(BookError::OrderIdNotFound { order_id: 42.into() })
         );
     }
 

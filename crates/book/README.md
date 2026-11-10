@@ -13,15 +13,21 @@ Matching rules, execution decisions, and trade generation belong to the matching
 ## Example
 
 ```rust
-use book::level3::{L3OrderBook, VecL3OrderBook};
-use book::trigger::{TriggerBook, TriggerCondition, VecTriggerBook};
+use book::{
+    OrderMutationsPolicy,
+    level3::{L3OrderBook, VecL3OrderBook},
+    trigger::{TriggerBook, TriggerCondition, VecTriggerBook},
+};
 
 use types::order::{
     LimitOrder, Order, OrderId, OrderSide, Price, Quantity, RestingLimitOrder, StopLimitOrder,
     TimeInForce, Timestamp,
 };
 
-let mut book = VecL3OrderBook::<LimitOrder, RestingLimitOrder>::new();
+let mut book = VecL3OrderBook::<LimitOrder, RestingLimitOrder>::new(
+    OrderMutationsPolicy::KeepPriority,
+    OrderMutationsPolicy::KeepPriority,
+);
 
 book.insert(LimitOrder::new(
     OrderId::new(1),
@@ -51,7 +57,11 @@ book.remove(OrderId::new(1)).unwrap();
 assert!(book.best_order(OrderSide::Bid).is_none());
 
 // Trigger book releases orders once the observed price crosses their threshold.
-let mut triggers = VecTriggerBook::<Price, StopLimitOrder>::new(TriggerCondition::AtOrAbove);
+let mut triggers = VecTriggerBook::<Price, StopLimitOrder>::new(
+    TriggerCondition::AtOrAbove,
+    OrderMutationsPolicy::KeepPriority,
+    OrderMutationsPolicy::KeepPriority,
+);
 
 triggers
     .insert(
@@ -90,12 +100,13 @@ The objective is to provide a consistent set of interfaces while leaving room fo
 
 ```text
 orderbook
+├── common         # BookError, OrderMutationsPolicy
 ├── level3         # order-granular book interface
-│   ├── common     # L3OrderBook, OrderBookError, checked quantity arithmetic
+│   ├── common     # L3OrderBook, checked quantity arithmetic
 │   └── vec        # VecL3OrderBook: sorted levels, FIFO orders, order index
 |
 └── trigger        # threshold-triggered orders
-    ├── common     # TriggerBook, TriggerCondition, TriggerBookError
+    ├── common     # TriggerBook, TriggerCondition
     └── vec        # VecTriggerBook: threshold-sorted orders
 ```
 

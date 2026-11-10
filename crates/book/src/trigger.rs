@@ -1,5 +1,6 @@
 pub mod common;
 pub mod vec;
 
-pub use common::{TriggerBook, TriggerBookError, TriggerCondition};
+pub use crate::{BookError, OrderMutationsPolicy};
+pub use common::{TriggerBook, TriggerCondition};
 pub use vec::{VecOrders, VecTriggerBook};

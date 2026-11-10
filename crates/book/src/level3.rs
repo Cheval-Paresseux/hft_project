@@ -1,5 +1,6 @@
 pub mod common;
 pub mod vec;
 
-pub use common::{L3OrderBook, OrderBookError};
+pub use crate::{BookError, OrderMutationsPolicy};
+pub use common::L3OrderBook;
 pub use vec::{VecL3OrderBook, VecRestingOrders};

@@ -1,6 +1,7 @@
 use super::orders::VecOrders;
 
-use crate::trigger::common::{TriggerBook, TriggerBookError, TriggerCondition};
+use crate::common::{BookError, OrderMutationsPolicy};
+use crate::trigger::common::{TriggerBook, TriggerCondition};
 
 use types::order::{
     fields::{OrderId, Quantity},
@@ -19,13 +20,23 @@ fn add_quantities(lhs: Quantity, rhs: Quantity) -> Quantity {
 pub struct VecTriggerBook<T, O> {
     condition: TriggerCondition,
     orders: Vec<(T, O)>,
+
+    reduce_policy: OrderMutationsPolicy,
+    increase_policy: OrderMutationsPolicy,
 }
 
 impl<T, O> VecTriggerBook<T, O> {
-    pub fn new(condition: TriggerCondition) -> Self {
+    pub fn new(
+        condition: TriggerCondition,
+        reduce_policy: OrderMutationsPolicy,
+        increase_policy: OrderMutationsPolicy,
+    ) -> Self {
         Self {
             condition,
             orders: Vec::new(),
+
+            reduce_policy,
+            increase_policy,
         }
     }
 }
@@ -60,11 +71,26 @@ impl<T: Ord, O: Order> VecTriggerBook<T, O> {
         }
     }
 
-    fn find_order_pos(&self, order_id: OrderId) -> Result<usize, TriggerBookError> {
+    fn find_order_pos(&self, order_id: OrderId) -> Result<usize, BookError> {
         self.orders
             .iter()
             .position(|(_, order)| order.id() == order_id)
-            .ok_or(TriggerBookError::OrderIdNotFound { order_id })
+            .ok_or(BookError::OrderIdNotFound { order_id })
+    }
+
+    fn apply_policy(&mut self, policy: &OrderMutationsPolicy, position: usize) {
+        match policy {
+            OrderMutationsPolicy::KeepPriority => {}
+            OrderMutationsPolicy::LosePriority => {
+                let insert_at = {
+                    let threshold = &self.orders[position].0;
+                    self.upper_bound(threshold)
+                };
+
+                let entry = self.orders.remove(position);
+                self.orders.insert(insert_at - 1, entry);
+            }
+        }
     }
 
     fn top_entry(&self) -> Option<&(T, O)> {
@@ -95,9 +121,9 @@ impl<T: Ord, O: Order> TriggerBook for VecTriggerBook<T, O> {
 
     // ── Book Mutations ────────────────────────────────────────────────────────
 
-    fn insert(&mut self, threshold: T, order: O) -> Result<(), TriggerBookError> {
+    fn insert(&mut self, threshold: T, order: O) -> Result<(), BookError> {
         if self.find_order_pos(order.id()).is_ok() {
-            return Err(TriggerBookError::OrderIdAlreadyExists { order_id: order.id() });
+            return Err(BookError::OrderIdAlreadyExists { order_id: order.id() });
         }
 
         let position = self.upper_bound(&threshold);
@@ -106,27 +132,18 @@ impl<T: Ord, O: Order> TriggerBook for VecTriggerBook<T, O> {
         Ok(())
     }
 
-    fn remove(&mut self, order_id: OrderId) -> Result<(), TriggerBookError> {
+    fn remove(&mut self, order_id: OrderId) -> Result<(), BookError> {
         let position = self.find_order_pos(order_id)?;
         self.orders.remove(position);
 
         Ok(())
     }
 
-    fn reduce(&mut self, order_id: OrderId, remaining_quantity: Quantity) -> Result<(), TriggerBookError> {
-        let position = self.find_order_pos(order_id)?;
-        let (_, order) = &mut self.orders[position];
-
-        order.set_quantity(remaining_quantity);
-
-        Ok(())
-    }
-
-    fn replace(&mut self, old_order_id: OrderId, new_threshold: T, new_order: O) -> Result<(), TriggerBookError> {
+    fn replace(&mut self, old_order_id: OrderId, new_threshold: T, new_order: O) -> Result<(), BookError> {
         let old_position = self.find_order_pos(old_order_id)?;
 
         if new_order.id() != old_order_id && self.find_order_pos(new_order.id()).is_ok() {
-            return Err(TriggerBookError::OrderIdAlreadyExists {
+            return Err(BookError::OrderIdAlreadyExists {
                 order_id: new_order.id(),
             });
         }
@@ -135,6 +152,36 @@ impl<T: Ord, O: Order> TriggerBook for VecTriggerBook<T, O> {
 
         let new_position = self.upper_bound(&new_threshold);
         self.orders.insert(new_position, (new_threshold, new_order));
+
+        Ok(())
+    }
+
+    // ── Orders Mutations ──────────────────────────────────────────────────────
+
+    fn reduce(&mut self, order_id: OrderId, remaining_quantity: Quantity) -> Result<(), BookError> {
+        let position = self.find_order_pos(order_id)?;
+        let policy = self.reduce_policy;
+
+        let (_, order) = &mut self.orders[position];
+        order.reduce(remaining_quantity)?;
+
+        if remaining_quantity.is_zero() {
+            self.orders.remove(position);
+        } else {
+            self.apply_policy(&policy, position);
+        }
+
+        Ok(())
+    }
+
+    fn increase(&mut self, order_id: OrderId, remaining_quantity: Quantity) -> Result<(), BookError> {
+        let position = self.find_order_pos(order_id)?;
+        let policy = self.increase_policy;
+
+        let (_, order) = &mut self.orders[position];
+        order.increase(remaining_quantity)?;
+
+        self.apply_policy(&policy, position);
 
         Ok(())
     }
@@ -220,7 +267,7 @@ impl<T: Ord, O: Order> TriggerBook for VecTriggerBook<T, O> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use types::order::{fields::Price, orders::RestingLimitOrder};
+    use types::order::{OrderError, fields::Price, orders::RestingLimitOrder};
 
     fn make_order(id: u64, quantity: u64) -> RestingLimitOrder {
         RestingLimitOrder::new(id.into(), quantity.into(), 0.into())
@@ -231,7 +278,11 @@ mod tests {
     }
 
     fn make_book(condition: TriggerCondition) -> VecTriggerBook<Price, RestingLimitOrder> {
-        VecTriggerBook::new(condition)
+        VecTriggerBook::new(
+            condition,
+            OrderMutationsPolicy::KeepPriority,
+            OrderMutationsPolicy::KeepPriority,
+        )
     }
 
     fn sample_book(condition: TriggerCondition) -> VecTriggerBook<Price, RestingLimitOrder> {
@@ -261,8 +312,14 @@ mod tests {
 
     #[test]
     fn new() {
-        let above = make_book(TriggerCondition::AtOrAbove);
+        let above: VecTriggerBook<Price, RestingLimitOrder> = VecTriggerBook::new(
+            TriggerCondition::AtOrAbove,
+            OrderMutationsPolicy::LosePriority,
+            OrderMutationsPolicy::KeepPriority,
+        );
         assert_eq!(above.condition, TriggerCondition::AtOrAbove);
+        assert_eq!(above.reduce_policy, OrderMutationsPolicy::LosePriority);
+        assert_eq!(above.increase_policy, OrderMutationsPolicy::KeepPriority);
         assert!(above.orders.is_empty());
 
         let below = make_book(TriggerCondition::AtOrBelow);
@@ -283,7 +340,7 @@ mod tests {
 
         assert_eq!(
             book.insert(price(110), make_order(2, 1)),
-            Err(TriggerBookError::OrderIdAlreadyExists { order_id: 2.into() })
+            Err(BookError::OrderIdAlreadyExists { order_id: 2.into() })
         );
         assert_eq!(book.orders.len(), 4);
     }
@@ -297,20 +354,7 @@ mod tests {
 
         assert_eq!(
             book.remove(42.into()),
-            Err(TriggerBookError::OrderIdNotFound { order_id: 42.into() })
-        );
-    }
-
-    #[test]
-    fn reduce() {
-        let mut book = sample_book(TriggerCondition::AtOrAbove);
-
-        assert_eq!(book.reduce(1.into(), 2.into()), Ok(()));
-        assert_eq!(book.orders[1].1.quantity(), 2.into());
-
-        assert_eq!(
-            book.reduce(42.into(), 1.into()),
-            Err(TriggerBookError::OrderIdNotFound { order_id: 42.into() })
+            Err(BookError::OrderIdNotFound { order_id: 42.into() })
         );
     }
 
@@ -323,13 +367,91 @@ mod tests {
 
         assert_eq!(
             book.replace(42.into(), price(100), make_order(6, 1)),
-            Err(TriggerBookError::OrderIdNotFound { order_id: 42.into() })
+            Err(BookError::OrderIdNotFound { order_id: 42.into() })
         );
 
         assert_eq!(
             book.replace(3.into(), price(100), make_order(4, 1)),
-            Err(TriggerBookError::OrderIdAlreadyExists { order_id: 4.into() })
+            Err(BookError::OrderIdAlreadyExists { order_id: 4.into() })
         );
+    }
+
+    #[test]
+    fn reduce() {
+        let mut book = sample_book(TriggerCondition::AtOrAbove);
+
+        assert_eq!(book.reduce(1.into(), 2.into()), Ok(()));
+        assert_eq!(book.orders[1].1.quantity(), 2.into());
+
+        assert_eq!(
+            book.reduce(1.into(), 9.into()),
+            Err(BookError::OrderError(OrderError::ReductionTooLarge {
+                order_id: 1.into(),
+                current: 2.into(),
+                new: 9.into(),
+            }))
+        );
+        assert_eq!(book.orders[1].1.quantity(), 2.into());
+
+        assert_eq!(
+            book.reduce(42.into(), 1.into()),
+            Err(BookError::OrderIdNotFound { order_id: 42.into() })
+        );
+
+        let mut book = VecTriggerBook::new(
+            TriggerCondition::AtOrAbove,
+            OrderMutationsPolicy::LosePriority,
+            OrderMutationsPolicy::KeepPriority,
+        );
+        book.insert(price(100), make_order(1, 5)).unwrap();
+        book.insert(price(100), make_order(3, 7)).unwrap();
+        book.insert(price(95), make_order(4, 10)).unwrap();
+
+        assert_eq!(book.reduce(1.into(), 2.into()), Ok(()));
+        assert_eq!(owned_entries(&book.orders), vec![(95, 4), (100, 3), (100, 1)]);
+
+        assert_eq!(book.reduce(1.into(), 0.into()), Ok(()));
+        assert_eq!(owned_entries(&book.orders), vec![(95, 4), (100, 3)]);
+        assert_eq!(
+            book.reduce(1.into(), 1.into()),
+            Err(BookError::OrderIdNotFound { order_id: 1.into() })
+        );
+    }
+
+    #[test]
+    fn increase() {
+        let mut book = sample_book(TriggerCondition::AtOrAbove);
+
+        assert_eq!(book.increase(1.into(), 20.into()), Ok(()));
+        assert_eq!(book.orders[1].1.quantity(), 20.into());
+        assert_eq!(book.quantity_at(&price(100)), 27.into());
+
+        assert_eq!(
+            book.increase(1.into(), 3.into()),
+            Err(BookError::OrderError(OrderError::IncreaseTooSmall {
+                order_id: 1.into(),
+                current: 20.into(),
+                new: 3.into(),
+            }))
+        );
+        assert_eq!(book.orders[1].1.quantity(), 20.into());
+
+        assert_eq!(
+            book.increase(42.into(), 1.into()),
+            Err(BookError::OrderIdNotFound { order_id: 42.into() })
+        );
+
+        let mut book = VecTriggerBook::new(
+            TriggerCondition::AtOrAbove,
+            OrderMutationsPolicy::KeepPriority,
+            OrderMutationsPolicy::LosePriority,
+        );
+        book.insert(price(100), make_order(1, 5)).unwrap();
+        book.insert(price(100), make_order(3, 7)).unwrap();
+        book.insert(price(95), make_order(4, 10)).unwrap();
+
+        assert_eq!(book.increase(1.into(), 20.into()), Ok(()));
+        assert_eq!(owned_entries(&book.orders), vec![(95, 4), (100, 3), (100, 1)]);
     }
 
     #[test]

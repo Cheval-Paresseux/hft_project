@@ -1,6 +1,10 @@
-use book::trigger::{TriggerBook, TriggerBookError, TriggerCondition, VecTriggerBook};
+use book::{
+    OrderMutationsPolicy,
+    trigger::{BookError, TriggerBook, TriggerCondition, VecTriggerBook},
+};
 
 use types::order::{
+    OrderError,
     fields::{Price, Quantity},
     orders::{Order, RestingLimitOrder},
 };
@@ -37,7 +41,11 @@ fn owned_entries(orders: &[(Price, RestingLimitOrder)]) -> Vec<(u64, u64)> {
 
 #[test]
 fn trigger_book_lifecycle() {
-    let mut book = VecTriggerBook::<Price, RestingLimitOrder>::new(TriggerCondition::AtOrAbove);
+    let mut book = VecTriggerBook::<Price, RestingLimitOrder>::new(
+        TriggerCondition::AtOrAbove,
+        OrderMutationsPolicy::KeepPriority,
+        OrderMutationsPolicy::KeepPriority,
+    );
 
     assert_eq!(book.condition(), TriggerCondition::AtOrAbove);
     assert!(book.best_order().is_none());
@@ -54,7 +62,7 @@ fn trigger_book_lifecycle() {
 
     assert_eq!(
         book.insert(price(120), resting(2, 1)),
-        Err(TriggerBookError::OrderIdAlreadyExists { order_id: 2.into() })
+        Err(BookError::OrderIdAlreadyExists { order_id: 2.into() })
     );
 
     // ── Inspect the book ──────────────────────────────────────────────────────
@@ -96,13 +104,33 @@ fn trigger_book_lifecycle() {
 
     // ── Reduce an order ───────────────────────────────────────────────────────
 
-    book.reduce(3.into(), quantity(30)).unwrap();
+    book.reduce(3.into(), quantity(12)).unwrap();
+
+    assert_eq!(book.quantity_at(&price(100)), quantity(17));
+    assert_eq!(
+        book.order(3.into())
+            .map(|(threshold, order)| (threshold.get(), order.quantity().get())),
+        Some((100, 12))
+    );
+
+    // ── Increase an order ─────────────────────────────────────────────────────
+
+    book.increase(3.into(), quantity(30)).unwrap();
 
     assert_eq!(book.quantity_at(&price(100)), quantity(35));
     assert_eq!(
         book.order(3.into())
             .map(|(threshold, order)| (threshold.get(), order.quantity().get())),
         Some((100, 30))
+    );
+
+    assert_eq!(
+        book.increase(3.into(), quantity(5)),
+        Err(BookError::OrderError(OrderError::IncreaseTooSmall {
+            order_id: 3.into(),
+            current: quantity(30),
+            new: quantity(5),
+        }))
     );
 
     // ── Remove an order ───────────────────────────────────────────────────────
@@ -113,7 +141,7 @@ fn trigger_book_lifecycle() {
     assert_eq!(book.quantity_at(&price(100)), quantity(30));
     assert_eq!(
         book.remove(2.into()),
-        Err(TriggerBookError::OrderIdNotFound { order_id: 2.into() })
+        Err(BookError::OrderIdNotFound { order_id: 2.into() })
     );
 
     // ── Trigger orders ────────────────────────────────────────────────────────

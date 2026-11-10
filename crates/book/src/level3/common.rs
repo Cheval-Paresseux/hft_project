@@ -1,26 +1,9 @@
+use crate::common::BookError;
+
 use types::order::{
     fields::{OrderId, OrderSide, Price, Quantity},
-    orders::{IncomingOrder, Order, OrderError},
+    orders::{IncomingOrder, Order},
 };
-
-use thiserror::Error;
-
-// ── Order Error ───────────────────────────────────────────────────────────────
-
-#[derive(Error, Debug, PartialEq, Eq)]
-pub enum OrderBookError {
-    #[error(transparent)]
-    OrderError(#[from] OrderError),
-
-    #[error("order with id {order_id:?} not found")]
-    OrderIdNotFound { order_id: OrderId },
-
-    #[error("order with id {order_id:?} already exists")]
-    OrderIdAlreadyExists { order_id: OrderId },
-
-    #[error("price level {price:?} not found")]
-    PriceLevelNotFound { price: Price },
-}
 
 // ── L3 Order Book  ────────────────────────────────────────────────────────────
 
@@ -34,11 +17,14 @@ pub trait L3OrderBook {
 
     // ── Book Mutations ────────────────────────────────────────────────────────
 
-    fn insert(&mut self, order: Self::Incoming) -> Result<(), OrderBookError>;
-    fn remove(&mut self, order_id: OrderId) -> Result<(), OrderBookError>;
+    fn insert(&mut self, order: Self::Incoming) -> Result<(), BookError>;
+    fn remove(&mut self, order_id: OrderId) -> Result<(), BookError>;
+    fn replace(&mut self, old_order_id: OrderId, new_order: Self::Incoming) -> Result<(), BookError>;
 
-    fn reduce(&mut self, order_id: OrderId, remaining_quantity: Quantity) -> Result<(), OrderBookError>;
-    fn replace(&mut self, old_order_id: OrderId, new_order: Self::Incoming) -> Result<(), OrderBookError>;
+    // ── Orders Mutations ──────────────────────────────────────────────────────
+
+    fn reduce(&mut self, order_id: OrderId, remaining_quantity: Quantity) -> Result<(), BookError>;
+    fn increase(&mut self, order_id: OrderId, remaining_quantity: Quantity) -> Result<(), BookError>;
 
     // ── Peek Orders ──────────────────────────────────────────────────────────
 
