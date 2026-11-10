@@ -1,7 +1,9 @@
 use crate::common::BookError;
 
-use types::order::fields::{OrderId, Quantity};
-use types::order::orders::Order;
+use types::order::{
+    fields::{OrderId, Quantity},
+    orders::Order,
+};
 
 // ── Trigger Condition ─────────────────────────────────────────────────────────
 

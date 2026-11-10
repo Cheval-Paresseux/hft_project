@@ -72,7 +72,7 @@ The Rust workspace is currently organized as follows:
 .
 ├── crates/           # Reusable Rust libraries
 │   ├── telemetry/    # Scope-based logging and monitoring
-│   ├── orderbook/    # Order book data structures
+│   ├── book/         # Order book data structures
 │   ├── matching/     # Matching engine implementations
 │   └── types/        # Shared domain definitions
 │

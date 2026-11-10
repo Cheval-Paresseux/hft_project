@@ -1,6 +1,6 @@
 use super::{level::VecL3BookLevel, orders::VecRestingOrders};
 
-use crate::common::{BookError, OrderMutationsPolicy};
+use crate::common::{BookError, OrderMutationsPolicy, add_quantities};
 
 use types::order::{
     fields::{OrderId, OrderSide, Price, Quantity},
@@ -71,7 +71,7 @@ impl<R> VecL3BookSide<R> {
         let mut cumulative = Quantity::new(0);
 
         for (index, level) in self.levels.iter().enumerate() {
-            cumulative = (cumulative + level.total_quantity).unwrap_or(Quantity::new(u64::MAX));
+            cumulative = add_quantities(cumulative, level.total_quantity);
 
             if cumulative >= limit {
                 return &self.levels[..=index];
@@ -203,7 +203,7 @@ impl<R> VecL3BookSide<R> {
         self.levels_through(bound)
             .iter()
             .fold(Quantity::new(0), |total, level| {
-                (total + level.total_quantity).unwrap_or(Quantity::new(u64::MAX))
+                add_quantities(total, level.total_quantity)
             })
     }
 }

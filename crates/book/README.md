@@ -99,15 +99,16 @@ The objective is to provide a consistent set of interfaces while leaving room fo
 ## Crate Structure
 
 ```text
-orderbook
-├── common         # BookError, OrderMutationsPolicy
+book
+├── common         # BookError, OrderMutationsPolicy, quantity arithmetic
 ├── level3         # order-granular book interface
-│   ├── common     # L3OrderBook, checked quantity arithmetic
-│   └── vec        # VecL3OrderBook: sorted levels, FIFO orders, order index
+│   ├── common     # L3OrderBook
+│   └── vec        # VecL3OrderBook, VecL3BookSide, VecL3BookLevel, VecRestingOrders
+│                  # sorted levels, FIFO orders, order index
 |
 └── trigger        # threshold-triggered orders
     ├── common     # TriggerBook, TriggerCondition
-    └── vec        # VecTriggerBook: threshold-sorted orders
+    └── vec        # VecTriggerBook, VecOrders: threshold-sorted orders
 ```
 
 ## Development Roadmap

@@ -43,7 +43,3 @@ pub trait L3OrderBook {
     fn quantity_at(&self, side: OrderSide, price: Price) -> Quantity;
     fn quantity_through(&self, side: OrderSide, bound: Option<Price>) -> Quantity;
 }
-
-// ═══════════════════════════════════════════════════════════════════════════════
-//  Unit Tests
-// ═══════════════════════════════════════════════════════════════════════════════

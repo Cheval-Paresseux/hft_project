@@ -1,18 +1,12 @@
 use super::orders::VecOrders;
 
-use crate::common::{BookError, OrderMutationsPolicy};
+use crate::common::{BookError, OrderMutationsPolicy, add_quantities};
 use crate::trigger::common::{TriggerBook, TriggerCondition};
 
 use types::order::{
     fields::{OrderId, Quantity},
     orders::Order,
 };
-
-// ── Helper on Quantity ────────────────────────────────────────────────────────
-
-fn add_quantities(lhs: Quantity, rhs: Quantity) -> Quantity {
-    (lhs + rhs).unwrap_or(Quantity::new(u64::MAX))
-}
 
 // ── Vec Trigger Book ──────────────────────────────────────────────────────────
 
@@ -325,6 +319,15 @@ mod tests {
         let below = make_book(TriggerCondition::AtOrBelow);
         assert_eq!(below.condition, TriggerCondition::AtOrBelow);
         assert!(below.orders.is_empty());
+    }
+
+    #[test]
+    fn condition() {
+        let above = make_book(TriggerCondition::AtOrAbove);
+        assert_eq!(above.condition(), TriggerCondition::AtOrAbove);
+
+        let below = make_book(TriggerCondition::AtOrBelow);
+        assert_eq!(below.condition(), TriggerCondition::AtOrBelow);
     }
 
     #[test]

@@ -1,6 +1,16 @@
-use types::order::{OrderError, OrderId, Price};
+use types::order::{OrderError, OrderId, Price, Quantity};
 
 use thiserror::Error;
+
+// ── Quantity Helpers ──────────────────────────────────────────────────────────
+
+pub(crate) fn add_quantities(lhs: Quantity, rhs: Quantity) -> Quantity {
+    (lhs + rhs).unwrap_or(Quantity::new(u64::MAX))
+}
+
+pub(crate) fn sub_quantities(lhs: Quantity, rhs: Quantity) -> Quantity {
+    (lhs - rhs).unwrap_or(Quantity::new(0))
+}
 
 // ── Order Mutations Policy ────────────────────────────────────────────────────
 

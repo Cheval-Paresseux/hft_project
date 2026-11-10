@@ -1,19 +1,9 @@
-use crate::common::{BookError, OrderMutationsPolicy};
+use crate::common::{BookError, OrderMutationsPolicy, add_quantities, sub_quantities};
 
 use types::order::{
     fields::{OrderId, Price, Quantity},
     orders::{IncomingOrder, Order},
 };
-
-// ── Quantity Helpers ──────────────────────────────────────────────────────────
-
-fn add_quantities(lhs: Quantity, rhs: Quantity) -> Quantity {
-    (lhs + rhs).unwrap_or(Quantity::new(u64::MAX))
-}
-
-fn sub_quantities(lhs: Quantity, rhs: Quantity) -> Quantity {
-    (lhs - rhs).unwrap_or(Quantity::new(0))
-}
 
 // ── Book Level ────────────────────────────────────────────────────────────────
 

@@ -24,7 +24,6 @@ pub struct VecL3OrderBook<I, R> {
 }
 
 impl<I, R> VecL3OrderBook<I, R> {
-    #[allow(clippy::new_without_default)]
     pub fn new(reduce_policy: OrderMutationsPolicy, increase_policy: OrderMutationsPolicy) -> Self {
         Self {
             ask_side: VecL3BookSide::new(OrderSide::Ask),
