@@ -46,3 +46,38 @@ impl From<Price> for u64 {
         val.0
     }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  Unit Tests
+// ═══════════════════════════════════════════════════════════════════════════════
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new() {
+        let price = Price::new(100);
+
+        assert_eq!(price.get(), 100);
+    }
+
+    #[test]
+    fn get() {
+        let price = Price::new(100);
+
+        assert_eq!(price.get(), 100);
+    }
+
+    #[test]
+    fn add() {
+        assert_eq!(Price::new(100) + Price::new(50), Some(Price::new(150)));
+        assert_eq!(Price::new(u64::MAX) + Price::new(1), None);
+    }
+
+    #[test]
+    fn sub() {
+        assert_eq!(Price::new(100) - Price::new(50), Some(Price::new(50)));
+        assert_eq!(Price::new(50) - Price::new(100), None);
+    }
+}

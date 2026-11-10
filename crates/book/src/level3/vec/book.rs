@@ -185,7 +185,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use types::order::{orders::RestingLimitOrder, LimitOrder, TimeInForce};
+    use types::order::{LimitOrder, TimeInForce, orders::RestingLimitOrder};
 
     fn price(value: u64) -> Price {
         Price::new(value)
@@ -380,10 +380,11 @@ mod tests {
     fn orders_through_quantity() {
         let book = sample_book();
 
-        assert!(book
-            .orders_through_quantity(OrderSide::Bid, Some(quantity(0)))
-            .next()
-            .is_none());
+        assert!(
+            book.orders_through_quantity(OrderSide::Bid, Some(quantity(0)))
+                .next()
+                .is_none()
+        );
         assert_eq!(
             entries(book.orders_through_quantity(OrderSide::Bid, Some(quantity(8)))),
             vec![(OrderSide::Bid, price(105), 3, 8)]

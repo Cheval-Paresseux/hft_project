@@ -58,21 +58,30 @@ impl Order for LimitOrder {
         self.quantity
     }
 
-    fn set_quantity(&mut self, quantity: Quantity) {
-        self.quantity = quantity;
+    fn reduce(&mut self, remaining_quantity: Quantity) -> Result<(), OrderError> {
+        if self.quantity() < remaining_quantity {
+            return Err(OrderError::ReductionTooLarge {
+                order_id: self.id(),
+                current: self.quantity(),
+                new: remaining_quantity,
+            });
+        }
+
+        self.quantity = remaining_quantity;
+
+        Ok(())
     }
 
-    fn fill(&mut self, fill_quantity: Quantity) -> Result<(), OrderError> {
-        let order_quantity = self.quantity();
-
-        let new_quantity =
-            (order_quantity - fill_quantity).ok_or(OrderError::FillExceedsOrderQuantity {
+    fn increase(&mut self, remaining_quantity: Quantity) -> Result<(), OrderError> {
+        if self.quantity() > remaining_quantity {
+            return Err(OrderError::IncreaseTooSmall {
                 order_id: self.id(),
-                order_quantity,
-                fill_quantity,
-            })?;
+                current: self.quantity(),
+                new: remaining_quantity,
+            });
+        }
 
-        self.quantity = new_quantity;
+        self.quantity = remaining_quantity;
 
         Ok(())
     }
@@ -125,7 +134,7 @@ mod tests {
     }
 
     #[test]
-    fn getters_return_correct_values() {
+    fn new() {
         let order = make_limit_order();
 
         assert_eq!(order.id(), OrderId::new(72));
@@ -137,26 +146,86 @@ mod tests {
     }
 
     #[test]
-    fn fill_reduces_quantity() {
-        let mut order = make_limit_order();
+    fn timestamp() {
+        let order = make_limit_order();
 
-        assert_eq!(order.fill(Quantity::new(3)), Ok(()));
-        assert_eq!(order.quantity(), Quantity::new(7));
+        assert_eq!(order.timestamp(), Timestamp::new(100_000));
     }
 
     #[test]
-    fn fill_exceeding_quantity_returns_error() {
-        let mut order = make_limit_order();
+    fn tif() {
+        let order = make_limit_order();
 
-        assert!(order.fill(Quantity::new(11)).is_err());
+        assert_eq!(order.tif(), TimeInForce::GoodTillCanceled);
+    }
+
+    #[test]
+    fn id() {
+        let order = make_limit_order();
+
+        assert_eq!(order.id(), OrderId::new(72));
+    }
+
+    #[test]
+    fn quantity() {
+        let order = make_limit_order();
+
         assert_eq!(order.quantity(), Quantity::new(10));
     }
 
     #[test]
-    fn filling_entire_quantity_succeeds() {
+    fn reduce() {
         let mut order = make_limit_order();
 
-        assert_eq!(order.fill(Quantity::new(10)), Ok(()));
+        assert_eq!(order.reduce(Quantity::new(4)), Ok(()));
+        assert_eq!(order.quantity(), Quantity::new(4));
+
+        assert_eq!(
+            order.reduce(Quantity::new(10)),
+            Err(OrderError::ReductionTooLarge {
+                order_id: OrderId::new(72),
+                current: Quantity::new(4),
+                new: Quantity::new(10),
+            })
+        );
+        assert_eq!(order.quantity(), Quantity::new(4));
+
+        assert_eq!(order.reduce(Quantity::new(0)), Ok(()));
         assert_eq!(order.quantity(), Quantity::new(0));
+    }
+
+    #[test]
+    fn increase() {
+        let mut order = make_limit_order();
+
+        assert_eq!(order.increase(Quantity::new(25)), Ok(()));
+        assert_eq!(order.quantity(), Quantity::new(25));
+
+        assert_eq!(
+            order.increase(Quantity::new(10)),
+            Err(OrderError::IncreaseTooSmall {
+                order_id: OrderId::new(72),
+                current: Quantity::new(25),
+                new: Quantity::new(10),
+            })
+        );
+        assert_eq!(order.quantity(), Quantity::new(25));
+
+        assert_eq!(order.increase(Quantity::new(25)), Ok(()));
+        assert_eq!(order.quantity(), Quantity::new(25));
+    }
+
+    #[test]
+    fn side() {
+        let order = make_limit_order();
+
+        assert_eq!(order.side(), OrderSide::Bid);
+    }
+
+    #[test]
+    fn limit() {
+        let order = make_limit_order();
+
+        assert_eq!(order.limit(), Price::new(100));
     }
 }

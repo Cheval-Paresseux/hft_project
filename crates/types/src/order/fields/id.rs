@@ -52,3 +52,60 @@ impl From<OrderId> for u64 {
         val.0
     }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  Unit Tests
+// ═══════════════════════════════════════════════════════════════════════════════
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn packed(side: OrderSide) -> OrderId {
+        OrderId::from_fields(Timestamp::new(0x1234_5678_9ABC), Price::new(0xABC), side).unwrap()
+    }
+
+    #[test]
+    fn new() {
+        let id = OrderId::new(72);
+
+        assert_eq!(id.get(), 72);
+    }
+
+    #[test]
+    fn from_fields() {
+        let id = packed(OrderSide::Ask);
+
+        assert_eq!(id.timestamp(), 0x1234_5678_9ABC);
+        assert_eq!(id.price(), 0xABC);
+        assert_eq!(id.side(), 1);
+
+        assert_eq!(
+            OrderId::from_fields(Timestamp::new(0x1_0000_0000_0000), Price::new(0xABC), OrderSide::Ask),
+            None
+        );
+    }
+
+    #[test]
+    fn get() {
+        let id = OrderId::new(72);
+
+        assert_eq!(id.get(), 72);
+    }
+
+    #[test]
+    fn timestamp() {
+        assert_eq!(packed(OrderSide::Bid).timestamp(), 0x1234_5678_9ABC);
+    }
+
+    #[test]
+    fn price() {
+        assert_eq!(packed(OrderSide::Bid).price(), 0xABC);
+    }
+
+    #[test]
+    fn side() {
+        assert_eq!(packed(OrderSide::Bid).side(), 0);
+        assert_eq!(packed(OrderSide::Ask).side(), 1);
+    }
+}

@@ -50,3 +50,44 @@ impl From<Quantity> for u64 {
         val.0
     }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  Unit Tests
+// ═══════════════════════════════════════════════════════════════════════════════
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new() {
+        let quantity = Quantity::new(10);
+
+        assert_eq!(quantity.get(), 10);
+    }
+
+    #[test]
+    fn get() {
+        let quantity = Quantity::new(10);
+
+        assert_eq!(quantity.get(), 10);
+    }
+
+    #[test]
+    fn is_zero() {
+        assert!(Quantity::new(0).is_zero());
+        assert!(!Quantity::new(1).is_zero());
+    }
+
+    #[test]
+    fn add() {
+        assert_eq!(Quantity::new(10) + Quantity::new(5), Some(Quantity::new(15)));
+        assert_eq!(Quantity::new(u64::MAX) + Quantity::new(1), None);
+    }
+
+    #[test]
+    fn sub() {
+        assert_eq!(Quantity::new(10) - Quantity::new(5), Some(Quantity::new(5)));
+        assert_eq!(Quantity::new(5) - Quantity::new(10), None);
+    }
+}

@@ -30,13 +30,17 @@ let mut order = LimitOrder::new(
     TimeInForce::GoodTillCanceled,
 );
 
-// Partially fill the order.
-assert_eq!(order.fill(Quantity::new(4)), Ok(()));
+// Reduce the order to the quantity left after a partial execution.
+assert_eq!(order.reduce(Quantity::new(6)), Ok(()));
 assert_eq!(order.quantity(), Quantity::new(6));
 
-// Reduce it to the representation retained by an order book.
+// Only a larger quantity is accepted afterwards.
+assert_eq!(order.increase(Quantity::new(8)), Ok(()));
+assert_eq!(order.quantity(), Quantity::new(8));
+
+// Convert it to the representation retained by an order book.
 let resting = RestingLimitOrder::from(order);
-assert_eq!(resting.quantity(), Quantity::new(6));
+assert_eq!(resting.quantity(), Quantity::new(8));
 ```
 
 ## Architecture

@@ -26,3 +26,26 @@ impl From<Timestamp> for u64 {
         val.0
     }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  Unit Tests
+// ═══════════════════════════════════════════════════════════════════════════════
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new() {
+        let timestamp = Timestamp::new(100_000);
+
+        assert_eq!(timestamp.get(), 100_000);
+    }
+
+    #[test]
+    fn get() {
+        let timestamp = Timestamp::new(u64::MAX);
+
+        assert_eq!(timestamp.get(), u64::MAX);
+    }
+}

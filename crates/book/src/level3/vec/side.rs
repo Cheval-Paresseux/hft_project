@@ -192,7 +192,7 @@ impl<R> VecL3BookSide<R> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use types::order::{orders::RestingLimitOrder, LimitOrder, TimeInForce};
+    use types::order::{LimitOrder, TimeInForce, orders::RestingLimitOrder};
 
     fn price(value: u64) -> Price {
         Price::new(value)

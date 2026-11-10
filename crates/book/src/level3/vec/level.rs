@@ -112,9 +112,9 @@ impl<R: Order> VecL3BookLevel<R> {
 mod tests {
     use super::*;
     use types::order::{
+        TimeInForce,
         fields::OrderSide,
         orders::{LimitOrder, RestingLimitOrder},
-        TimeInForce,
     };
 
     fn price(value: u64) -> Price {
