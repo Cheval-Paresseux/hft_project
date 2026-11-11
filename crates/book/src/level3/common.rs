@@ -5,7 +5,7 @@ use types::order::{
     orders::{IncomingOrder, Order},
 };
 
-// ── L3 Order Book  ────────────────────────────────────────────────────────────
+// ── L3 Order Book ─────────────────────────────────────────────────────────────
 
 pub trait L3OrderBook {
     type Incoming: IncomingOrder;
