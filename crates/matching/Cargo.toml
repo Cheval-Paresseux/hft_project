@@ -6,3 +6,7 @@ edition = "2024"
 [dependencies]
 book.workspace = true
 telemetry.workspace = true
+types.workspace = true
+
+thiserror = "2.0.19"
+smallvec = "1.16.5"
