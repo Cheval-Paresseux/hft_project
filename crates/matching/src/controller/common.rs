@@ -1,5 +1,7 @@
 use crate::common::MatchingError;
 
+use book::level3::L3OrderBook;
+
 use types::order::{
     fields::{OrderId, Quantity},
     orders::IncomingOrder,
@@ -7,10 +9,14 @@ use types::order::{
 
 use smallvec::SmallVec;
 
-// ── Instructions ──────────────────────────────────────────────────────────────
+// ── Book Routing ──────────────────────────────────────────────────────────────
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct BookRouting {}
 
+// ── Instructions ──────────────────────────────────────────────────────────────
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BookInstruction<I: IncomingOrder> {
     Insert(I),
     Remove(OrderId),
@@ -19,6 +25,9 @@ pub enum BookInstruction<I: IncomingOrder> {
     Increase(OrderId, Quantity),
 }
 
+// ── Instructions Batch ────────────────────────────────────────────────────────
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct InstructionsBatch<I: IncomingOrder> {
     pub routing: BookRouting,
     instructions: SmallVec<[BookInstruction<I>; 8]>,
@@ -41,10 +50,21 @@ impl<I: IncomingOrder> InstructionsBatch<I> {
     }
 }
 
-// ── Controller ────────────────────────────────────────────────────────────────
+impl<I: IncomingOrder> IntoIterator for InstructionsBatch<I> {
+    type Item = BookInstruction<I>;
+    type IntoIter = smallvec::IntoIter<[BookInstruction<I>; 8]>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.instructions.into_iter()
+    }
+}
+
+// ── Book Controller ───────────────────────────────────────────────────────────
 
 pub trait BookController {
     type Order: IncomingOrder;
+    type Book: L3OrderBook<Incoming = Self::Order>;
 
+    fn view(&self) -> &Self::Book;
     fn execute(&mut self, batch: InstructionsBatch<Self::Order>) -> Result<(), MatchingError>;
 }
