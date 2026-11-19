@@ -1,6 +1,6 @@
 use super::orders::VecOrders;
 
-use crate::common::{BookError, OrderMutationsPolicy, add_quantities};
+use crate::common::{BookError, LocationError, MutationError, OrderMutationsPolicy, add_quantities};
 use crate::trigger::common::{TriggerBook, TriggerBookView, TriggerCondition};
 
 use types::order::{
@@ -59,7 +59,7 @@ impl<T: Ord, O: Order> VecTriggerBook<T, O> {
         self.orders
             .iter()
             .position(|(_, order)| order.id() == order_id)
-            .ok_or(BookError::OrderIdNotFound { order_id })
+            .ok_or(LocationError::IdNotFound { order_id }.into())
     }
 
     fn apply_policy(&mut self, policy: &OrderMutationsPolicy, position: usize) {
@@ -176,7 +176,7 @@ impl<T: Ord, O: Order> TriggerBook for VecTriggerBook<T, O> {
 
     fn insert(&mut self, threshold: T, order: O) -> Result<(), BookError> {
         if self.find_order_pos(order.id()).is_ok() {
-            return Err(BookError::OrderIdAlreadyExists { order_id: order.id() });
+            return Err(MutationError::IdAlreadyExists { order_id: order.id() }.into());
         }
 
         let position = self.upper_bound(&threshold);
@@ -196,9 +196,10 @@ impl<T: Ord, O: Order> TriggerBook for VecTriggerBook<T, O> {
         let old_position = self.find_order_pos(old_order_id)?;
 
         if new_order.id() != old_order_id && self.find_order_pos(new_order.id()).is_ok() {
-            return Err(BookError::OrderIdAlreadyExists {
+            return Err(MutationError::IdAlreadyExists {
                 order_id: new_order.id(),
-            });
+            }
+            .into());
         }
 
         self.orders.remove(old_position);
@@ -335,7 +336,9 @@ mod tests {
 
         assert_eq!(
             book.insert(price(110), make_order(2, 1)),
-            Err(BookError::OrderIdAlreadyExists { order_id: 2.into() })
+            Err(BookError::MutationError(MutationError::IdAlreadyExists {
+                order_id: 2.into()
+            }))
         );
         assert_eq!(book.orders.len(), 4);
     }
@@ -349,7 +352,9 @@ mod tests {
 
         assert_eq!(
             book.remove(42.into()),
-            Err(BookError::OrderIdNotFound { order_id: 42.into() })
+            Err(BookError::LocationError(LocationError::IdNotFound {
+                order_id: 42.into()
+            }))
         );
     }
 
@@ -362,12 +367,16 @@ mod tests {
 
         assert_eq!(
             book.replace(42.into(), price(100), make_order(6, 1)),
-            Err(BookError::OrderIdNotFound { order_id: 42.into() })
+            Err(BookError::LocationError(LocationError::IdNotFound {
+                order_id: 42.into()
+            }))
         );
 
         assert_eq!(
             book.replace(3.into(), price(100), make_order(4, 1)),
-            Err(BookError::OrderIdAlreadyExists { order_id: 4.into() })
+            Err(BookError::MutationError(MutationError::IdAlreadyExists {
+                order_id: 4.into()
+            }))
         );
     }
 
@@ -393,7 +402,9 @@ mod tests {
 
         assert_eq!(
             book.reduce(42.into(), 1.into(), OrderMutationsPolicy::KeepPriority),
-            Err(BookError::OrderIdNotFound { order_id: 42.into() })
+            Err(BookError::LocationError(LocationError::IdNotFound {
+                order_id: 42.into()
+            }))
         );
 
         let mut book = VecTriggerBook::new(TriggerCondition::AtOrAbove);
@@ -414,7 +425,9 @@ mod tests {
         assert_eq!(owned_entries(&book.orders), vec![(95, 4), (100, 3)]);
         assert_eq!(
             book.reduce(1.into(), 1.into(), OrderMutationsPolicy::KeepPriority),
-            Err(BookError::OrderIdNotFound { order_id: 1.into() })
+            Err(BookError::LocationError(LocationError::IdNotFound {
+                order_id: 1.into()
+            }))
         );
     }
 
@@ -441,7 +454,9 @@ mod tests {
 
         assert_eq!(
             book.increase(42.into(), 1.into(), OrderMutationsPolicy::KeepPriority),
-            Err(BookError::OrderIdNotFound { order_id: 42.into() })
+            Err(BookError::LocationError(LocationError::IdNotFound {
+                order_id: 42.into()
+            }))
         );
 
         let mut book = VecTriggerBook::new(TriggerCondition::AtOrAbove);

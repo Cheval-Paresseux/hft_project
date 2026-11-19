@@ -1,6 +1,6 @@
 use book::{
     OrderMutationsPolicy,
-    level3::{BookError, L2BookView, L3BookView, L3OrderBook, VecL3OrderBook},
+    level3::{BookError, L2BookView, L3BookView, L3OrderBook, LocationError, MutationError, VecL3OrderBook},
 };
 
 use types::order::{
@@ -69,7 +69,9 @@ fn level3_book_lifecycle() {
 
     assert_eq!(
         book.insert(limit(1, 1, OrderSide::Bid, 101)),
-        Err(BookError::OrderIdAlreadyExists { order_id: 1.into() })
+        Err(BookError::MutationError(MutationError::IdAlreadyExists {
+            order_id: 1.into()
+        }))
     );
 
     // ── Best orders and lookups ───────────────────────────────────────────────
@@ -170,7 +172,9 @@ fn level3_book_lifecycle() {
     assert_eq!(book.quantity_at(OrderSide::Bid, price(100)), quantity(12));
     assert_eq!(
         book.remove(1.into()),
-        Err(BookError::OrderIdNotFound { order_id: 1.into() })
+        Err(BookError::LocationError(LocationError::IdNotFound {
+            order_id: 1.into()
+        }))
     );
 
     book.remove(2.into()).unwrap();

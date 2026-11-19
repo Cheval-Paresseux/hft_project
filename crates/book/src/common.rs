@@ -27,14 +27,30 @@ pub enum BookError {
     #[error(transparent)]
     OrderError(#[from] OrderError),
 
-    #[error("order with id {order_id:?} not found")]
-    OrderIdNotFound { order_id: OrderId },
+    #[error(transparent)]
+    LocationError(#[from] LocationError),
 
-    #[error("order with id {order_id:?} already exists")]
-    OrderIdAlreadyExists { order_id: OrderId },
+    #[error(transparent)]
+    MutationError(#[from] MutationError),
+}
+
+// ── Location Error ────────────────────────────────────────────────────────────
+
+#[derive(Error, Debug, PartialEq, Eq)]
+pub enum LocationError {
+    #[error("order with id {order_id:?} not found")]
+    IdNotFound { order_id: OrderId },
 
     #[error("price level {price:?} not found")]
     PriceLevelNotFound { price: Price },
+}
+
+// ── Mutation Error ────────────────────────────────────────────────────────────
+
+#[derive(Error, Debug, PartialEq, Eq)]
+pub enum MutationError {
+    #[error("order with id {order_id:?} already exists")]
+    IdAlreadyExists { order_id: OrderId },
 
     #[error("fill of {filled:?} exceeds quantity {quantity:?} on order {order_id:?}")]
     FillTooLarge {

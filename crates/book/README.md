@@ -100,7 +100,8 @@ The objective is to provide a consistent set of interfaces while leaving room fo
 
 ```text
 book
-├── common         # BookError, OrderMutationsPolicy, quantity arithmetic
+├── common         # BookError (LocationError, MutationError), OrderMutationsPolicy,
+│                  # quantity arithmetic
 ├── level3         # order-granular book interface
 │   ├── common     # L2BookView, L3BookView, L3OrderBook, L3BookUpdate
 │   └── vec        # VecL3OrderBook, VecL3BookSide, VecL3BookLevel, VecRestingOrders

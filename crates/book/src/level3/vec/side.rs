@@ -1,6 +1,6 @@
 use super::{level::VecL3BookLevel, orders::VecRestingOrders};
 
-use crate::common::{BookError, OrderMutationsPolicy, add_quantities};
+use crate::common::{BookError, LocationError, OrderMutationsPolicy, add_quantities};
 
 use types::order::{
     fields::{OrderId, OrderSide, Price, Quantity},
@@ -35,7 +35,7 @@ impl<R> VecL3BookSide<R> {
         if position < self.levels.len() && self.levels[position].price == price {
             Ok(position)
         } else {
-            Err(BookError::PriceLevelNotFound { price })
+            Err(LocationError::PriceLevelNotFound { price }.into())
         }
     }
 
@@ -307,7 +307,9 @@ mod tests {
 
         assert_eq!(
             ask_side.remove(42.into(), price(100)),
-            Err(BookError::PriceLevelNotFound { price: price(100) })
+            Err(BookError::LocationError(LocationError::PriceLevelNotFound {
+                price: price(100)
+            }))
         );
     }
 
@@ -325,7 +327,9 @@ mod tests {
 
         assert_eq!(
             ask_side.reduce(&OrderMutationsPolicy::KeepPriority, 42.into(), price(100), quantity(1)),
-            Err(BookError::OrderIdNotFound { order_id: 42.into() })
+            Err(BookError::LocationError(LocationError::IdNotFound {
+                order_id: 42.into()
+            }))
         );
 
         assert_eq!(
@@ -356,7 +360,9 @@ mod tests {
 
         assert_eq!(
             ask_side.increase(&OrderMutationsPolicy::KeepPriority, 42.into(), price(100), quantity(1)),
-            Err(BookError::OrderIdNotFound { order_id: 42.into() })
+            Err(BookError::LocationError(LocationError::IdNotFound {
+                order_id: 42.into()
+            }))
         );
     }
 

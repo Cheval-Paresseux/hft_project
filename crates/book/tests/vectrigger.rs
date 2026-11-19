@@ -1,6 +1,8 @@
 use book::{
     OrderMutationsPolicy,
-    trigger::{BookError, TriggerBook, TriggerBookView, TriggerCondition, VecTriggerBook},
+    trigger::{
+        BookError, LocationError, MutationError, TriggerBook, TriggerBookView, TriggerCondition, VecTriggerBook,
+    },
 };
 
 use types::order::{
@@ -58,7 +60,9 @@ fn trigger_book_lifecycle() {
 
     assert_eq!(
         book.insert(price(120), resting(2, 1)),
-        Err(BookError::OrderIdAlreadyExists { order_id: 2.into() })
+        Err(BookError::MutationError(MutationError::IdAlreadyExists {
+            order_id: 2.into()
+        }))
     );
 
     // ── Inspect the book ──────────────────────────────────────────────────────
@@ -139,7 +143,9 @@ fn trigger_book_lifecycle() {
     assert_eq!(book.quantity_at(&price(100)), quantity(30));
     assert_eq!(
         book.remove(2.into()),
-        Err(BookError::OrderIdNotFound { order_id: 2.into() })
+        Err(BookError::LocationError(LocationError::IdNotFound {
+            order_id: 2.into()
+        }))
     );
 
     // ── Trigger orders ────────────────────────────────────────────────────────

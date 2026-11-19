@@ -1,4 +1,4 @@
-use crate::common::{BookError, OrderMutationsPolicy, add_quantities, sub_quantities};
+use crate::common::{BookError, LocationError, OrderMutationsPolicy, add_quantities, sub_quantities};
 
 use types::order::{
     fields::{OrderId, Price, Quantity},
@@ -39,7 +39,7 @@ impl<R: Order> VecL3BookLevel<R> {
         self.orders
             .iter()
             .position(|order| order.id() == order_id)
-            .ok_or(BookError::OrderIdNotFound { order_id })
+            .ok_or(LocationError::IdNotFound { order_id }.into())
     }
 
     pub fn insert<I>(&mut self, order: I) -> Result<(), BookError>
@@ -213,7 +213,9 @@ mod tests {
 
         assert_eq!(
             level.remove(42.into()),
-            Err(BookError::OrderIdNotFound { order_id: 42.into() })
+            Err(BookError::LocationError(LocationError::IdNotFound {
+                order_id: 42.into()
+            }))
         );
     }
 
@@ -250,7 +252,9 @@ mod tests {
 
         assert_eq!(
             level.reduce(&OrderMutationsPolicy::KeepPriority, 42.into(), quantity(1)),
-            Err(BookError::OrderIdNotFound { order_id: 42.into() })
+            Err(BookError::LocationError(LocationError::IdNotFound {
+                order_id: 42.into()
+            }))
         );
 
         assert_eq!(
@@ -297,7 +301,9 @@ mod tests {
 
         assert_eq!(
             level.increase(&OrderMutationsPolicy::KeepPriority, 42.into(), quantity(1)),
-            Err(BookError::OrderIdNotFound { order_id: 42.into() })
+            Err(BookError::LocationError(LocationError::IdNotFound {
+                order_id: 42.into()
+            }))
         );
     }
 

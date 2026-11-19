@@ -1,6 +1,6 @@
 use super::{orders::VecRestingOrders, side::VecL3BookSide};
 
-use crate::common::{BookError, OrderMutationsPolicy};
+use crate::common::{BookError, LocationError, MutationError, OrderMutationsPolicy};
 use crate::level3::common::{L2BookView, L3BookView, L3OrderBook};
 
 use types::order::{
@@ -35,7 +35,7 @@ impl<I, R> VecL3OrderBook<I, R> {
         self.orders_map
             .get(&order_id)
             .copied()
-            .ok_or(BookError::OrderIdNotFound { order_id })
+            .ok_or(LocationError::IdNotFound { order_id }.into())
     }
 }
 
@@ -146,7 +146,7 @@ where
         let order_id = order.id();
 
         if self.orders_map.contains_key(&order_id) {
-            return Err(BookError::OrderIdAlreadyExists { order_id });
+            return Err(MutationError::IdAlreadyExists { order_id }.into());
         }
 
         let side = order.side();
@@ -181,7 +181,7 @@ where
         let new_order_id = new_order.id();
 
         if new_order_id != old_order_id && self.orders_map.contains_key(&new_order_id) {
-            return Err(BookError::OrderIdAlreadyExists { order_id: new_order_id });
+            return Err(MutationError::IdAlreadyExists { order_id: new_order_id }.into());
         }
 
         self.remove(old_order_id)?;
@@ -191,10 +191,10 @@ where
     // ── Orders Mutations ──────────────────────────────────────────────────────
 
     fn fill(&mut self, order_id: OrderId, filled_quantity: Quantity) -> Result<(), BookError> {
-        let (_, _, order) = self.order(order_id).ok_or(BookError::OrderIdNotFound { order_id })?;
+        let (_, _, order) = self.order(order_id).ok_or(LocationError::IdNotFound { order_id })?;
         let quantity = order.quantity();
 
-        let remaining_quantity = (quantity - filled_quantity).ok_or(BookError::FillTooLarge {
+        let remaining_quantity = (quantity - filled_quantity).ok_or(MutationError::FillTooLarge {
             order_id,
             quantity,
             filled: filled_quantity,
@@ -314,7 +314,9 @@ mod tests {
 
         assert_eq!(
             book.insert(limit(1, 5, OrderSide::Bid, 105)),
-            Err(BookError::OrderIdAlreadyExists { order_id: 1.into() })
+            Err(BookError::MutationError(MutationError::IdAlreadyExists {
+                order_id: 1.into()
+            }))
         );
         assert_eq!(book.quantity_at(OrderSide::Bid, price(105)), quantity(0));
     }
@@ -329,7 +331,9 @@ mod tests {
 
         assert_eq!(
             book.remove(42.into()),
-            Err(BookError::OrderIdNotFound { order_id: 42.into() })
+            Err(BookError::LocationError(LocationError::IdNotFound {
+                order_id: 42.into()
+            }))
         );
     }
 
@@ -344,12 +348,16 @@ mod tests {
 
         assert_eq!(
             book.replace(42.into(), limit(6, 1, OrderSide::Bid, 100)),
-            Err(BookError::OrderIdNotFound { order_id: 42.into() })
+            Err(BookError::LocationError(LocationError::IdNotFound {
+                order_id: 42.into()
+            }))
         );
 
         assert_eq!(
             book.replace(1.into(), limit(2, 1, OrderSide::Bid, 100)),
-            Err(BookError::OrderIdAlreadyExists { order_id: 2.into() })
+            Err(BookError::MutationError(MutationError::IdAlreadyExists {
+                order_id: 2.into()
+            }))
         );
     }
 
@@ -374,7 +382,9 @@ mod tests {
 
         assert_eq!(
             book.reduce(42.into(), quantity(1), OrderMutationsPolicy::KeepPriority),
-            Err(BookError::OrderIdNotFound { order_id: 42.into() })
+            Err(BookError::LocationError(LocationError::IdNotFound {
+                order_id: 42.into()
+            }))
         );
 
         assert_eq!(
@@ -390,7 +400,9 @@ mod tests {
         assert_eq!(book.quantity_at(OrderSide::Bid, price(100)), quantity(0));
         assert_eq!(
             book.reduce(1.into(), quantity(1), OrderMutationsPolicy::KeepPriority),
-            Err(BookError::OrderIdNotFound { order_id: 1.into() })
+            Err(BookError::LocationError(LocationError::IdNotFound {
+                order_id: 1.into()
+            }))
         );
     }
 
@@ -416,7 +428,9 @@ mod tests {
 
         assert_eq!(
             book.increase(42.into(), quantity(1), OrderMutationsPolicy::KeepPriority),
-            Err(BookError::OrderIdNotFound { order_id: 42.into() })
+            Err(BookError::LocationError(LocationError::IdNotFound {
+                order_id: 42.into()
+            }))
         );
     }
 
@@ -434,11 +448,11 @@ mod tests {
 
         assert_eq!(
             book.fill(1.into(), quantity(4)),
-            Err(BookError::FillTooLarge {
+            Err(BookError::MutationError(MutationError::FillTooLarge {
                 order_id: 1.into(),
                 quantity: quantity(3),
                 filled: quantity(4),
-            })
+            }))
         );
 
         assert_eq!(book.fill(1.into(), quantity(3)), Ok(()));
@@ -446,7 +460,9 @@ mod tests {
 
         assert_eq!(
             book.fill(42.into(), quantity(1)),
-            Err(BookError::OrderIdNotFound { order_id: 42.into() })
+            Err(BookError::LocationError(LocationError::IdNotFound {
+                order_id: 42.into()
+            }))
         );
     }
 
@@ -496,7 +512,9 @@ mod tests {
 
         assert_eq!(
             book.apply(L3BookUpdate::Remove(42.into())),
-            Err(BookError::OrderIdNotFound { order_id: 42.into() })
+            Err(BookError::LocationError(LocationError::IdNotFound {
+                order_id: 42.into()
+            }))
         );
     }
 
