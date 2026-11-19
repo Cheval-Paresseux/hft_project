@@ -4,7 +4,7 @@ use crate::common::{BookError, OrderMutationsPolicy, add_quantities};
 
 use types::order::{
     fields::{OrderId, OrderSide, Price, Quantity},
-    orders::{IncomingOrder, Order},
+    orders::{BookableOrder, Order},
 };
 
 // ── Book Side ─────────────────────────────────────────────────────────────────
@@ -87,7 +87,7 @@ impl<R> VecL3BookSide<R> {
 impl<R: Order> VecL3BookSide<R> {
     pub fn insert<I>(&mut self, order: I) -> Result<(), BookError>
     where
-        I: IncomingOrder,
+        I: BookableOrder,
         R: From<I>,
     {
         let position = self.get_or_create_level(order.limit());
@@ -192,6 +192,10 @@ impl<R: Order> VecL3BookSide<R> {
 // ── Quantity Aggregations ─────────────────────────────────────────────────────
 
 impl<R> VecL3BookSide<R> {
+    pub fn best_price(&self) -> Option<Price> {
+        self.levels.first().map(|level| level.price)
+    }
+
     pub fn quantity_at(&self, price: Price) -> Quantity {
         match self.find_level(price) {
             Ok(position) => self.levels[position].total_quantity,
@@ -463,6 +467,16 @@ mod tests {
             entries(bids.orders_through_quantity(Some(quantity(8)))),
             vec![(OrderSide::Bid, price(105), 3, 8)]
         );
+    }
+
+    #[test]
+    fn best_price() {
+        let asks = sample(OrderSide::Ask);
+        let bids = sample(OrderSide::Bid);
+
+        assert_eq!(asks.best_price(), Some(price(100)));
+        assert_eq!(bids.best_price(), Some(price(105)));
+        assert_eq!(side(OrderSide::Ask).best_price(), None);
     }
 
     #[test]

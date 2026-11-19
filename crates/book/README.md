@@ -15,7 +15,7 @@ Matching rules, execution decisions, and trade generation belong to the matching
 ```rust
 use book::{
     OrderMutationsPolicy,
-    level3::{L3OrderBook, VecL3OrderBook},
+    level3::{L2BookView, L3BookUpdate, L3BookView, L3OrderBook, VecL3OrderBook},
     trigger::{TriggerBook, TriggerCondition, VecTriggerBook},
 };
 
@@ -24,10 +24,7 @@ use types::order::{
     TimeInForce, Timestamp,
 };
 
-let mut book = VecL3OrderBook::<LimitOrder, RestingLimitOrder>::new(
-    OrderMutationsPolicy::KeepPriority,
-    OrderMutationsPolicy::KeepPriority,
-);
+let mut book = VecL3OrderBook::<LimitOrder, RestingLimitOrder>::new();
 
 book.insert(LimitOrder::new(
     OrderId::new(1),
@@ -46,22 +43,22 @@ assert_eq!(
     (OrderSide::Bid, Price::new(100), Quantity::new(10))
 );
 
-// Reduce the order to its remaining quantity, then remove it.
-book.reduce(OrderId::new(1), Quantity::new(5)).unwrap();
+// Reduce the order to its remaining quantity; the priority rule is a venue
+// rule carried by the mutation, not configured in the book.
+book.reduce(OrderId::new(1), Quantity::new(5), OrderMutationsPolicy::KeepPriority)
+    .unwrap();
 assert_eq!(
     book.quantity_at(OrderSide::Bid, Price::new(100)),
     Quantity::new(5)
 );
 
-book.remove(OrderId::new(1)).unwrap();
+// Producers (matching engine, feed handler) drive the book through updates.
+book.apply(L3BookUpdate::Fill(OrderId::new(1), Quantity::new(2))).unwrap();
+book.apply(L3BookUpdate::Remove(OrderId::new(1))).unwrap();
 assert!(book.best_order(OrderSide::Bid).is_none());
 
 // Trigger book releases orders once the observed price crosses their threshold.
-let mut triggers = VecTriggerBook::<Price, StopLimitOrder>::new(
-    TriggerCondition::AtOrAbove,
-    OrderMutationsPolicy::KeepPriority,
-    OrderMutationsPolicy::KeepPriority,
-);
+let mut triggers = VecTriggerBook::<Price, StopLimitOrder>::new(TriggerCondition::AtOrAbove);
 
 triggers
     .insert(
@@ -93,6 +90,9 @@ The crate is therefore designed around **book abstractions** and **concrete impl
 - **Implementation independence:** Each abstraction defines the operations and guarantees expected by its consumers without prescribing a particular storage mechanism. Multiple implementations can therefore provide the same interface while making different performance trade-offs.
 - **Performance-oriented design:** Data structures should be selected according to their operational characteristics, including insertion, cancellation, modification, price-level lookup, and traversal. No implementation is assumed to be optimal for every workload.
 - **Separation of responsibilities:** The order book maintains and exposes its state, while matching logic remains the responsibility of the matching engine. This allows both components to evolve independently.
+- **Capability-based interfaces:** Read access is split from mutation. `L2BookView` exposes price-level aggregates, `L3BookView` adds order-granular access, and `L3OrderBook` adds mutations. Consumers depend on the narrowest view they need, so a strategy written against `L2BookView` runs on any book.
+- **Shared update vocabulary:** `L3BookUpdate` describes book mutations independently of their producer. A matching engine (simulation) and a market-by-order feed (live) drive the same book through the same updates.
+- **Policy-free storage:** Priority rules on modification are venue rules. They are carried by each mutation (`OrderMutationsPolicy`) rather than configured in the book.
 
 The objective is to provide a consistent set of interfaces while leaving room for specialised implementations optimised for different execution environments and performance requirements.
 
@@ -102,12 +102,12 @@ The objective is to provide a consistent set of interfaces while leaving room fo
 book
 ├── common         # BookError, OrderMutationsPolicy, quantity arithmetic
 ├── level3         # order-granular book interface
-│   ├── common     # L3OrderBook
+│   ├── common     # L2BookView, L3BookView, L3OrderBook, L3BookUpdate
 │   └── vec        # VecL3OrderBook, VecL3BookSide, VecL3BookLevel, VecRestingOrders
 │                  # sorted levels, FIFO orders, order index
-|
+│
 └── trigger        # threshold-triggered orders
-    ├── common     # TriggerBook, TriggerCondition
+    ├── common     # TriggerBookView, TriggerBook, TriggerCondition
     └── vec        # VecTriggerBook, VecOrders: threshold-sorted orders
 ```
 

@@ -1,11 +1,11 @@
 use super::{orders::VecRestingOrders, side::VecL3BookSide};
 
 use crate::common::{BookError, OrderMutationsPolicy};
-use crate::level3::common::L3OrderBook;
+use crate::level3::common::{L2BookView, L3BookView, L3OrderBook};
 
 use types::order::{
     fields::{OrderId, OrderSide, Price, Quantity},
-    orders::{IncomingOrder, Order},
+    orders::{BookableOrder, Order},
 };
 
 use std::{collections::HashMap, marker::PhantomData};
@@ -17,21 +17,15 @@ pub struct VecL3OrderBook<I, R> {
     bid_side: VecL3BookSide<R>,
     orders_map: HashMap<OrderId, (OrderSide, Price)>,
 
-    reduce_policy: OrderMutationsPolicy,
-    increase_policy: OrderMutationsPolicy,
-
     _incoming: PhantomData<I>,
 }
 
 impl<I, R> VecL3OrderBook<I, R> {
-    pub fn new(reduce_policy: OrderMutationsPolicy, increase_policy: OrderMutationsPolicy) -> Self {
+    pub fn new() -> Self {
         Self {
             ask_side: VecL3BookSide::new(OrderSide::Ask),
             bid_side: VecL3BookSide::new(OrderSide::Bid),
             orders_map: HashMap::new(),
-
-            reduce_policy,
-            increase_policy,
 
             _incoming: PhantomData,
         }
@@ -45,20 +39,106 @@ impl<I, R> VecL3OrderBook<I, R> {
     }
 }
 
-// ── L3 Order Book Trait ───────────────────────────────────────────────────────
+impl<I, R> Default for VecL3OrderBook<I, R> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
-impl<I, R> L3OrderBook for VecL3OrderBook<I, R>
-where
-    I: IncomingOrder,
-    R: Order + From<I>,
-{
-    type Incoming = I;
+// ── L2 Book View Trait ────────────────────────────────────────────────────────
+
+impl<I, R> L2BookView for VecL3OrderBook<I, R> {
+    fn best_price(&self, side: OrderSide) -> Option<Price> {
+        match side {
+            OrderSide::Bid => self.bid_side.best_price(),
+            OrderSide::Ask => self.ask_side.best_price(),
+        }
+    }
+
+    // ── Quantity Aggregations ────────────────────────────────────────────────
+
+    fn quantity_at(&self, side: OrderSide, price: Price) -> Quantity {
+        match side {
+            OrderSide::Bid => self.bid_side.quantity_at(price),
+            OrderSide::Ask => self.ask_side.quantity_at(price),
+        }
+    }
+
+    fn quantity_through(&self, side: OrderSide, bound: Option<Price>) -> Quantity {
+        match side {
+            OrderSide::Bid => self.bid_side.quantity_through(bound),
+            OrderSide::Ask => self.ask_side.quantity_through(bound),
+        }
+    }
+}
+
+// ── L3 Book View Trait ────────────────────────────────────────────────────────
+
+impl<I, R: Order> L3BookView for VecL3OrderBook<I, R> {
     type Resting = R;
 
     type RestingOrders<'a>
         = VecRestingOrders<'a, R>
     where
         Self: 'a;
+
+    // ── Peek Orders ──────────────────────────────────────────────────────────
+
+    fn order(&self, order_id: OrderId) -> Option<(OrderSide, Price, &Self::Resting)> {
+        let (side, price) = self.find_order(order_id).ok()?;
+
+        match side {
+            OrderSide::Bid => self.bid_side.order(order_id, price),
+            OrderSide::Ask => self.ask_side.order(order_id, price),
+        }
+    }
+
+    fn best_order(&self, side: OrderSide) -> Option<(OrderSide, Price, &Self::Resting)> {
+        match side {
+            OrderSide::Bid => self.bid_side.best_order(),
+            OrderSide::Ask => self.ask_side.best_order(),
+        }
+    }
+
+    fn best_order_at(&self, side: OrderSide, price: Price) -> Option<(OrderSide, Price, &Self::Resting)> {
+        match side {
+            OrderSide::Bid => self.bid_side.best_order_at(price),
+            OrderSide::Ask => self.ask_side.best_order_at(price),
+        }
+    }
+
+    // ── Order Traversal ──────────────────────────────────────────────────────
+
+    fn orders_at(&self, side: OrderSide, price: Price) -> Self::RestingOrders<'_> {
+        match side {
+            OrderSide::Bid => self.bid_side.orders_at(price),
+            OrderSide::Ask => self.ask_side.orders_at(price),
+        }
+    }
+
+    fn orders_through(&self, side: OrderSide, bound: Option<Price>) -> Self::RestingOrders<'_> {
+        match side {
+            OrderSide::Bid => self.bid_side.orders_through(bound),
+            OrderSide::Ask => self.ask_side.orders_through(bound),
+        }
+    }
+
+    fn orders_through_quantity(&self, side: OrderSide, limit: Option<Quantity>) -> Self::RestingOrders<'_> {
+        match side {
+            OrderSide::Bid => self.bid_side.orders_through_quantity(limit),
+            OrderSide::Ask => self.ask_side.orders_through_quantity(limit),
+        }
+    }
+}
+
+// ── L3 Order Book Trait ───────────────────────────────────────────────────────
+
+impl<I, R> L3OrderBook for VecL3OrderBook<I, R>
+where
+    I: BookableOrder,
+    R: Order + From<I>,
+{
+    type Incoming = I;
 
     // ── Book Mutations ────────────────────────────────────────────────────────
 
@@ -110,16 +190,30 @@ where
 
     // ── Orders Mutations ──────────────────────────────────────────────────────
 
-    fn reduce(&mut self, order_id: OrderId, remaining_quantity: Quantity) -> Result<(), BookError> {
+    fn fill(&mut self, order_id: OrderId, filled_quantity: Quantity) -> Result<(), BookError> {
+        let (_, _, order) = self.order(order_id).ok_or(BookError::OrderIdNotFound { order_id })?;
+        let quantity = order.quantity();
+
+        let remaining_quantity = (quantity - filled_quantity).ok_or(BookError::FillTooLarge {
+            order_id,
+            quantity,
+            filled: filled_quantity,
+        })?;
+
+        self.reduce(order_id, remaining_quantity, OrderMutationsPolicy::KeepPriority)
+    }
+
+    fn reduce(
+        &mut self,
+        order_id: OrderId,
+        remaining_quantity: Quantity,
+        policy: OrderMutationsPolicy,
+    ) -> Result<(), BookError> {
         let (side, price) = self.find_order(order_id)?;
 
         match side {
-            OrderSide::Bid => self
-                .bid_side
-                .reduce(&self.reduce_policy, order_id, price, remaining_quantity)?,
-            OrderSide::Ask => self
-                .ask_side
-                .reduce(&self.reduce_policy, order_id, price, remaining_quantity)?,
+            OrderSide::Bid => self.bid_side.reduce(&policy, order_id, price, remaining_quantity)?,
+            OrderSide::Ask => self.ask_side.reduce(&policy, order_id, price, remaining_quantity)?,
         }
 
         if remaining_quantity.is_zero() {
@@ -129,80 +223,17 @@ where
         Ok(())
     }
 
-    fn increase(&mut self, order_id: OrderId, remaining_quantity: Quantity) -> Result<(), BookError> {
+    fn increase(
+        &mut self,
+        order_id: OrderId,
+        remaining_quantity: Quantity,
+        policy: OrderMutationsPolicy,
+    ) -> Result<(), BookError> {
         let (side, price) = self.find_order(order_id)?;
 
         match side {
-            OrderSide::Bid => self
-                .bid_side
-                .increase(&self.increase_policy, order_id, price, remaining_quantity),
-            OrderSide::Ask => self
-                .ask_side
-                .increase(&self.increase_policy, order_id, price, remaining_quantity),
-        }
-    }
-
-    // ── Peek Orders ──────────────────────────────────────────────────────────
-
-    fn order(&self, order_id: OrderId) -> Option<(OrderSide, Price, &Self::Resting)> {
-        let (side, price) = self.find_order(order_id).ok()?;
-
-        match side {
-            OrderSide::Bid => self.bid_side.order(order_id, price),
-            OrderSide::Ask => self.ask_side.order(order_id, price),
-        }
-    }
-
-    fn best_order(&self, side: OrderSide) -> Option<(OrderSide, Price, &Self::Resting)> {
-        match side {
-            OrderSide::Bid => self.bid_side.best_order(),
-            OrderSide::Ask => self.ask_side.best_order(),
-        }
-    }
-
-    fn best_order_at(&self, side: OrderSide, price: Price) -> Option<(OrderSide, Price, &Self::Resting)> {
-        match side {
-            OrderSide::Bid => self.bid_side.best_order_at(price),
-            OrderSide::Ask => self.ask_side.best_order_at(price),
-        }
-    }
-
-    // ── Order Traversal ──────────────────────────────────────────────────────
-
-    fn orders_at(&self, side: OrderSide, price: Price) -> Self::RestingOrders<'_> {
-        match side {
-            OrderSide::Bid => self.bid_side.orders_at(price),
-            OrderSide::Ask => self.ask_side.orders_at(price),
-        }
-    }
-
-    fn orders_through(&self, side: OrderSide, bound: Option<Price>) -> Self::RestingOrders<'_> {
-        match side {
-            OrderSide::Bid => self.bid_side.orders_through(bound),
-            OrderSide::Ask => self.ask_side.orders_through(bound),
-        }
-    }
-
-    fn orders_through_quantity(&self, side: OrderSide, limit: Option<Quantity>) -> Self::RestingOrders<'_> {
-        match side {
-            OrderSide::Bid => self.bid_side.orders_through_quantity(limit),
-            OrderSide::Ask => self.ask_side.orders_through_quantity(limit),
-        }
-    }
-
-    // ── Quantity Aggregations ────────────────────────────────────────────────
-
-    fn quantity_at(&self, side: OrderSide, price: Price) -> Quantity {
-        match side {
-            OrderSide::Bid => self.bid_side.quantity_at(price),
-            OrderSide::Ask => self.ask_side.quantity_at(price),
-        }
-    }
-
-    fn quantity_through(&self, side: OrderSide, bound: Option<Price>) -> Quantity {
-        match side {
-            OrderSide::Bid => self.bid_side.quantity_through(bound),
-            OrderSide::Ask => self.ask_side.quantity_through(bound),
+            OrderSide::Bid => self.bid_side.increase(&policy, order_id, price, remaining_quantity),
+            OrderSide::Ask => self.ask_side.increase(&policy, order_id, price, remaining_quantity),
         }
     }
 }
@@ -214,6 +245,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::level3::common::L3BookUpdate;
     use types::order::{LimitOrder, OrderError, TimeInForce, orders::RestingLimitOrder};
 
     fn price(value: u64) -> Price {
@@ -236,7 +268,7 @@ mod tests {
     }
 
     fn make_book() -> VecL3OrderBook<LimitOrder, RestingLimitOrder> {
-        VecL3OrderBook::new(OrderMutationsPolicy::KeepPriority, OrderMutationsPolicy::KeepPriority)
+        VecL3OrderBook::new()
     }
 
     fn sample_book() -> VecL3OrderBook<LimitOrder, RestingLimitOrder> {
@@ -326,7 +358,7 @@ mod tests {
         let mut book = sample_book();
 
         assert_eq!(
-            book.reduce(1.into(), quantity(50)),
+            book.reduce(1.into(), quantity(50), OrderMutationsPolicy::KeepPriority),
             Err(BookError::OrderError(OrderError::ReductionTooLarge {
                 order_id: 1.into(),
                 current: quantity(5),
@@ -334,21 +366,30 @@ mod tests {
             }))
         );
 
-        assert_eq!(book.reduce(1.into(), quantity(2)), Ok(()));
+        assert_eq!(
+            book.reduce(1.into(), quantity(2), OrderMutationsPolicy::KeepPriority),
+            Ok(())
+        );
         assert_eq!(book.quantity_at(OrderSide::Bid, price(100)), quantity(9));
 
         assert_eq!(
-            book.reduce(42.into(), quantity(1)),
+            book.reduce(42.into(), quantity(1), OrderMutationsPolicy::KeepPriority),
             Err(BookError::OrderIdNotFound { order_id: 42.into() })
         );
 
-        assert_eq!(book.reduce(2.into(), quantity(0)), Ok(()));
-        assert_eq!(book.reduce(1.into(), quantity(0)), Ok(()));
+        assert_eq!(
+            book.reduce(2.into(), quantity(0), OrderMutationsPolicy::KeepPriority),
+            Ok(())
+        );
+        assert_eq!(
+            book.reduce(1.into(), quantity(0), OrderMutationsPolicy::KeepPriority),
+            Ok(())
+        );
 
         assert!(book.best_order_at(OrderSide::Bid, price(100)).is_none());
         assert_eq!(book.quantity_at(OrderSide::Bid, price(100)), quantity(0));
         assert_eq!(
-            book.reduce(1.into(), quantity(1)),
+            book.reduce(1.into(), quantity(1), OrderMutationsPolicy::KeepPriority),
             Err(BookError::OrderIdNotFound { order_id: 1.into() })
         );
     }
@@ -357,11 +398,14 @@ mod tests {
     fn increase() {
         let mut book = sample_book();
 
-        assert_eq!(book.increase(1.into(), quantity(20)), Ok(()));
+        assert_eq!(
+            book.increase(1.into(), quantity(20), OrderMutationsPolicy::KeepPriority),
+            Ok(())
+        );
         assert_eq!(book.quantity_at(OrderSide::Bid, price(100)), quantity(27));
 
         assert_eq!(
-            book.increase(1.into(), quantity(3)),
+            book.increase(1.into(), quantity(3), OrderMutationsPolicy::KeepPriority),
             Err(BookError::OrderError(OrderError::IncreaseTooSmall {
                 order_id: 1.into(),
                 current: quantity(20),
@@ -371,7 +415,87 @@ mod tests {
         assert_eq!(book.quantity_at(OrderSide::Bid, price(100)), quantity(27));
 
         assert_eq!(
-            book.increase(42.into(), quantity(1)),
+            book.increase(42.into(), quantity(1), OrderMutationsPolicy::KeepPriority),
+            Err(BookError::OrderIdNotFound { order_id: 42.into() })
+        );
+    }
+
+    #[test]
+    fn fill() {
+        let mut book = sample_book();
+
+        assert_eq!(book.fill(1.into(), quantity(2)), Ok(()));
+        assert_eq!(book.quantity_at(OrderSide::Bid, price(100)), quantity(10));
+        assert_eq!(
+            book.best_order_at(OrderSide::Bid, price(100))
+                .map(|(_, _, order)| (order.id(), order.quantity())),
+            Some((1.into(), quantity(3)))
+        );
+
+        assert_eq!(
+            book.fill(1.into(), quantity(4)),
+            Err(BookError::FillTooLarge {
+                order_id: 1.into(),
+                quantity: quantity(3),
+                filled: quantity(4),
+            })
+        );
+
+        assert_eq!(book.fill(1.into(), quantity(3)), Ok(()));
+        assert!(book.order(1.into()).is_none());
+
+        assert_eq!(
+            book.fill(42.into(), quantity(1)),
+            Err(BookError::OrderIdNotFound { order_id: 42.into() })
+        );
+    }
+
+    #[test]
+    fn apply() {
+        let mut book = make_book();
+
+        assert_eq!(
+            book.apply(L3BookUpdate::Insert(limit(1, 10, OrderSide::Bid, 100))),
+            Ok(())
+        );
+        assert_eq!(
+            book.apply(L3BookUpdate::Insert(limit(2, 4, OrderSide::Bid, 100))),
+            Ok(())
+        );
+        assert_eq!(book.apply(L3BookUpdate::Fill(1.into(), quantity(2))), Ok(()));
+        assert_eq!(
+            book.apply(L3BookUpdate::Reduce(
+                1.into(),
+                quantity(6),
+                OrderMutationsPolicy::LosePriority
+            )),
+            Ok(())
+        );
+        assert_eq!(
+            entries(book.orders_at(OrderSide::Bid, price(100))),
+            vec![(OrderSide::Bid, price(100), 2, 4), (OrderSide::Bid, price(100), 1, 6)]
+        );
+
+        assert_eq!(
+            book.apply(L3BookUpdate::Increase(
+                2.into(),
+                quantity(5),
+                OrderMutationsPolicy::KeepPriority
+            )),
+            Ok(())
+        );
+        assert_eq!(
+            book.apply(L3BookUpdate::Replace(2.into(), limit(2, 5, OrderSide::Bid, 101))),
+            Ok(())
+        );
+        assert_eq!(book.apply(L3BookUpdate::Remove(1.into())), Ok(()));
+        assert_eq!(
+            entries(book.orders_through(OrderSide::Bid, None)),
+            vec![(OrderSide::Bid, price(101), 2, 5)]
+        );
+
+        assert_eq!(
+            book.apply(L3BookUpdate::Remove(42.into())),
             Err(BookError::OrderIdNotFound { order_id: 42.into() })
         );
     }
@@ -472,6 +596,15 @@ mod tests {
             entries(book.orders_through_quantity(OrderSide::Ask, None)),
             vec![(OrderSide::Ask, price(195), 5, 4), (OrderSide::Ask, price(200), 4, 6),]
         );
+    }
+
+    #[test]
+    fn best_price() {
+        let book = sample_book();
+
+        assert_eq!(book.best_price(OrderSide::Bid), Some(price(105)));
+        assert_eq!(book.best_price(OrderSide::Ask), Some(price(195)));
+        assert_eq!(make_book().best_price(OrderSide::Bid), None);
     }
 
     #[test]

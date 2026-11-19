@@ -1,4 +1,4 @@
-use crate::common::BookError;
+use crate::common::{BookError, OrderMutationsPolicy};
 
 use types::order::{
     fields::{OrderId, Quantity},
@@ -22,9 +22,9 @@ impl TriggerCondition {
     }
 }
 
-// ── Trigger Book ──────────────────────────────────────────────────────────────
+// ── Trigger Book View ─────────────────────────────────────────────────────────
 
-pub trait TriggerBook {
+pub trait TriggerBookView {
     type Threshold: Ord;
     type Order: Order;
 
@@ -33,26 +33,6 @@ pub trait TriggerBook {
         Self: 'a;
 
     fn condition(&self) -> TriggerCondition;
-
-    // ── Book Mutations ────────────────────────────────────────────────────────
-
-    fn insert(&mut self, threshold: Self::Threshold, order: Self::Order) -> Result<(), BookError>;
-    fn remove(&mut self, order_id: OrderId) -> Result<(), BookError>;
-    fn replace(
-        &mut self,
-        old_order_id: OrderId,
-        new_threshold: Self::Threshold,
-        new_order: Self::Order,
-    ) -> Result<(), BookError>;
-
-    // ── Orders Mutations ──────────────────────────────────────────────────────
-
-    fn reduce(&mut self, order_id: OrderId, remaining_quantity: Quantity) -> Result<(), BookError>;
-    fn increase(&mut self, order_id: OrderId, remaining_quantity: Quantity) -> Result<(), BookError>;
-
-    // ── Trigger Evaluation ───────────────────────────────────────────────────
-
-    fn trigger(&mut self, trigger: Self::Threshold) -> Vec<(Self::Threshold, Self::Order)>;
 
     // ── Peek Orders ──────────────────────────────────────────────────────────
 
@@ -70,6 +50,40 @@ pub trait TriggerBook {
 
     fn quantity_at(&self, threshold: &Self::Threshold) -> Quantity;
     fn quantity_through(&self, bound: Option<&Self::Threshold>) -> Quantity;
+}
+
+// ── Trigger Book ──────────────────────────────────────────────────────────────
+
+pub trait TriggerBook: TriggerBookView {
+    // ── Book Mutations ────────────────────────────────────────────────────────
+
+    fn insert(&mut self, threshold: Self::Threshold, order: Self::Order) -> Result<(), BookError>;
+    fn remove(&mut self, order_id: OrderId) -> Result<(), BookError>;
+    fn replace(
+        &mut self,
+        old_order_id: OrderId,
+        new_threshold: Self::Threshold,
+        new_order: Self::Order,
+    ) -> Result<(), BookError>;
+
+    // ── Orders Mutations ──────────────────────────────────────────────────────
+
+    fn reduce(
+        &mut self,
+        order_id: OrderId,
+        remaining_quantity: Quantity,
+        policy: OrderMutationsPolicy,
+    ) -> Result<(), BookError>;
+    fn increase(
+        &mut self,
+        order_id: OrderId,
+        remaining_quantity: Quantity,
+        policy: OrderMutationsPolicy,
+    ) -> Result<(), BookError>;
+
+    // ── Trigger Evaluation ───────────────────────────────────────────────────
+
+    fn trigger(&mut self, trigger: Self::Threshold) -> Vec<(Self::Threshold, Self::Order)>;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

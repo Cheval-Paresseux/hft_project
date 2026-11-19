@@ -2,7 +2,7 @@ use crate::common::{BookError, OrderMutationsPolicy, add_quantities, sub_quantit
 
 use types::order::{
     fields::{OrderId, Price, Quantity},
-    orders::{IncomingOrder, Order},
+    orders::{BookableOrder, Order},
 };
 
 // ── Book Level ────────────────────────────────────────────────────────────────
@@ -44,7 +44,7 @@ impl<R: Order> VecL3BookLevel<R> {
 
     pub fn insert<I>(&mut self, order: I) -> Result<(), BookError>
     where
-        I: IncomingOrder,
+        I: BookableOrder,
         R: From<I>,
     {
         self.total_quantity = add_quantities(self.total_quantity, order.quantity());

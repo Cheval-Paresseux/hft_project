@@ -35,4 +35,11 @@ pub enum BookError {
 
     #[error("price level {price:?} not found")]
     PriceLevelNotFound { price: Price },
+
+    #[error("fill of {filled:?} exceeds quantity {quantity:?} on order {order_id:?}")]
+    FillTooLarge {
+        order_id: OrderId,
+        quantity: Quantity,
+        filled: Quantity,
+    },
 }

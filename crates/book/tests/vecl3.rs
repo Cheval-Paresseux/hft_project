@@ -1,6 +1,6 @@
 use book::{
     OrderMutationsPolicy,
-    level3::{BookError, L3OrderBook, VecL3OrderBook},
+    level3::{BookError, L2BookView, L3BookView, L3OrderBook, VecL3OrderBook},
 };
 
 use types::order::{
@@ -31,7 +31,7 @@ fn limit(id: u64, quantity: u64, side: OrderSide, price: u64) -> LimitOrder {
 }
 
 fn make_book() -> VecL3OrderBook<LimitOrder, RestingLimitOrder> {
-    VecL3OrderBook::new(OrderMutationsPolicy::KeepPriority, OrderMutationsPolicy::KeepPriority)
+    VecL3OrderBook::new()
 }
 
 fn entries<'a>(
@@ -153,7 +153,8 @@ fn level3_book_lifecycle() {
 
     // ── Reduce an order ───────────────────────────────────────────────────────
 
-    book.reduce(3.into(), quantity(12)).unwrap();
+    book.reduce(3.into(), quantity(12), OrderMutationsPolicy::KeepPriority)
+        .unwrap();
 
     assert_eq!(
         book.order(3.into()).map(|(_, _, order)| order.quantity()),

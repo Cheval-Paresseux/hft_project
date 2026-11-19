@@ -1,6 +1,6 @@
 use book::{
     OrderMutationsPolicy,
-    trigger::{BookError, TriggerBook, TriggerCondition, VecTriggerBook},
+    trigger::{BookError, TriggerBook, TriggerBookView, TriggerCondition, VecTriggerBook},
 };
 
 use types::order::{
@@ -41,11 +41,7 @@ fn owned_entries(orders: &[(Price, RestingLimitOrder)]) -> Vec<(u64, u64)> {
 
 #[test]
 fn trigger_book_lifecycle() {
-    let mut book = VecTriggerBook::<Price, RestingLimitOrder>::new(
-        TriggerCondition::AtOrAbove,
-        OrderMutationsPolicy::KeepPriority,
-        OrderMutationsPolicy::KeepPriority,
-    );
+    let mut book = VecTriggerBook::<Price, RestingLimitOrder>::new(TriggerCondition::AtOrAbove);
 
     assert_eq!(book.condition(), TriggerCondition::AtOrAbove);
     assert!(book.best_order().is_none());
@@ -104,7 +100,8 @@ fn trigger_book_lifecycle() {
 
     // ── Reduce an order ───────────────────────────────────────────────────────
 
-    book.reduce(3.into(), quantity(12)).unwrap();
+    book.reduce(3.into(), quantity(12), OrderMutationsPolicy::KeepPriority)
+        .unwrap();
 
     assert_eq!(book.quantity_at(&price(100)), quantity(17));
     assert_eq!(
@@ -115,7 +112,8 @@ fn trigger_book_lifecycle() {
 
     // ── Increase an order ─────────────────────────────────────────────────────
 
-    book.increase(3.into(), quantity(30)).unwrap();
+    book.increase(3.into(), quantity(30), OrderMutationsPolicy::KeepPriority)
+        .unwrap();
 
     assert_eq!(book.quantity_at(&price(100)), quantity(35));
     assert_eq!(
@@ -125,7 +123,7 @@ fn trigger_book_lifecycle() {
     );
 
     assert_eq!(
-        book.increase(3.into(), quantity(5)),
+        book.increase(3.into(), quantity(5), OrderMutationsPolicy::KeepPriority),
         Err(BookError::OrderError(OrderError::IncreaseTooSmall {
             order_id: 3.into(),
             current: quantity(30),
