@@ -2,7 +2,7 @@ use super::stop_limit::StopLimitOrder;
 
 use crate::order::{
     fields::{OrderId, OrderSide, Price, Quantity, TimeInForce, Timestamp},
-    orders::{IncomingOrder, Order, OrderError},
+    orders::{BookableOrder, Order, OrderError},
 };
 
 // ── Limit Order ───────────────────────────────────────────────────────────────
@@ -87,9 +87,9 @@ impl Order for LimitOrder {
     }
 }
 
-// ── Incoming Order Trait ──────────────────────────────────────────────────────
+// ── Bookable Order Trait ──────────────────────────────────────────────────────
 
-impl IncomingOrder for LimitOrder {
+impl BookableOrder for LimitOrder {
     fn side(&self) -> OrderSide {
         self.side
     }

@@ -31,9 +31,9 @@ pub trait Order {
     fn increase(&mut self, remaining_quantity: Quantity) -> Result<(), OrderError>;
 }
 
-// ── Incoming Order ────────────────────────────────────────────────────────────
+// ── Bookable Order ────────────────────────────────────────────────────────────
 
-pub trait IncomingOrder: Order {
+pub trait BookableOrder: Order {
     fn side(&self) -> OrderSide;
     fn limit(&self) -> Price;
 }

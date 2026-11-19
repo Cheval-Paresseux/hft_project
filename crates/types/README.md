@@ -69,7 +69,7 @@ types
     │   └── timestamp.rs # Timestamp
     │
     └── orders
-        ├── common.rs   # Order / IncomingOrder, OrderError
+        ├── common.rs   # Order / BookableOrder, OrderError
         ├── base        # Limit, Market, Stop, Stop-Limit
         └── resting     # RestingLimitOrder
 ```
