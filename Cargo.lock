@@ -777,7 +777,6 @@ version = "0.1.0"
 dependencies = [
  "book",
  "smallvec",
- "telemetry",
  "thiserror",
  "types",
 ]
