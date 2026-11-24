@@ -22,6 +22,17 @@ impl TriggerCondition {
     }
 }
 
+// ── Trigger Book Update ───────────────────────────────────────────────────────
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TriggerBookUpdate<T, O> {
+    Insert(T, O),
+    Remove(OrderId),
+    Replace(OrderId, T, O),
+    Reduce(OrderId, Quantity, OrderMutationsPolicy),
+    Increase(OrderId, Quantity, OrderMutationsPolicy),
+}
+
 // ── Trigger Book View ─────────────────────────────────────────────────────────
 
 pub trait TriggerBookView {
@@ -84,6 +95,24 @@ pub trait TriggerBook: TriggerBookView {
     // ── Trigger Evaluation ───────────────────────────────────────────────────
 
     fn trigger(&mut self, trigger: Self::Threshold) -> Vec<(Self::Threshold, Self::Order)>;
+
+    // ── Updates ──────────────────────────────────────────────────────────────
+
+    fn apply(&mut self, update: TriggerBookUpdate<Self::Threshold, Self::Order>) -> Result<(), BookError> {
+        match update {
+            TriggerBookUpdate::Insert(threshold, order) => self.insert(threshold, order),
+            TriggerBookUpdate::Remove(order_id) => self.remove(order_id),
+            TriggerBookUpdate::Replace(old_order_id, new_threshold, new_order) => {
+                self.replace(old_order_id, new_threshold, new_order)
+            }
+            TriggerBookUpdate::Reduce(order_id, remaining_quantity, policy) => {
+                self.reduce(order_id, remaining_quantity, policy)
+            }
+            TriggerBookUpdate::Increase(order_id, remaining_quantity, policy) => {
+                self.increase(order_id, remaining_quantity, policy)
+            }
+        }
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

@@ -91,7 +91,7 @@ The crate is therefore designed around **book abstractions** and **concrete impl
 - **Performance-oriented design:** Data structures should be selected according to their operational characteristics, including insertion, cancellation, modification, price-level lookup, and traversal. No implementation is assumed to be optimal for every workload.
 - **Separation of responsibilities:** The order book maintains and exposes its state, while matching logic remains the responsibility of the matching engine. This allows both components to evolve independently.
 - **Capability-based interfaces:** Read access is split from mutation. `L2BookView` exposes price-level aggregates, `L3BookView` adds order-granular access, and `L3OrderBook` adds mutations. Consumers depend on the narrowest view they need, so a strategy written against `L2BookView` runs on any book.
-- **Shared update vocabulary:** `L3BookUpdate` describes book mutations independently of their producer. A matching engine (simulation) and a market-by-order feed (live) drive the same book through the same updates.
+- **Shared update vocabulary:** `L3BookUpdate` and `TriggerBookUpdate` describe book mutations independently of their producer. A matching engine (simulation) and a market-by-order feed (live) drive the same book through the same updates.
 - **Policy-free storage:** Priority rules on modification are venue rules. They are carried by each mutation (`OrderMutationsPolicy`) rather than configured in the book.
 
 The objective is to provide a consistent set of interfaces while leaving room for specialised implementations optimised for different execution environments and performance requirements.
@@ -108,7 +108,8 @@ book
 │                  # sorted levels, FIFO orders, order index
 │
 └── trigger        # threshold-triggered orders
-    ├── common     # TriggerBookView, TriggerBook, TriggerCondition
+    ├── common     # TriggerBookView, TriggerBook, TriggerBookUpdate,
+    │              # TriggerCondition
     └── vec        # VecTriggerBook, VecOrders: threshold-sorted orders
 ```
 

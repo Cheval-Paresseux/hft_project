@@ -264,6 +264,7 @@ impl<T: Ord, O: Order> TriggerBook for VecTriggerBook<T, O> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::trigger::common::TriggerBookUpdate;
     use types::order::{OrderError, fields::Price, orders::RestingLimitOrder};
 
     fn make_order(id: u64, quantity: u64) -> RestingLimitOrder {
@@ -655,5 +656,48 @@ mod tests {
         assert_eq!(below.quantity_through(None), 30.into());
 
         assert_eq!(make_book(TriggerCondition::AtOrBelow).quantity_through(None), 0.into());
+    }
+
+    #[test]
+    fn apply() {
+        let mut book = make_book(TriggerCondition::AtOrAbove);
+
+        assert_eq!(
+            book.apply(TriggerBookUpdate::Insert(price(100), make_order(1, 5))),
+            Ok(())
+        );
+        assert_eq!(
+            book.apply(TriggerBookUpdate::Insert(price(105), make_order(2, 8))),
+            Ok(())
+        );
+        assert_eq!(
+            book.apply(TriggerBookUpdate::Reduce(
+                2.into(),
+                6.into(),
+                OrderMutationsPolicy::KeepPriority
+            )),
+            Ok(())
+        );
+        assert_eq!(
+            book.apply(TriggerBookUpdate::Increase(
+                2.into(),
+                7.into(),
+                OrderMutationsPolicy::KeepPriority
+            )),
+            Ok(())
+        );
+        assert_eq!(
+            book.apply(TriggerBookUpdate::Replace(1.into(), price(110), make_order(3, 4))),
+            Ok(())
+        );
+        assert_eq!(book.apply(TriggerBookUpdate::Remove(2.into())), Ok(()));
+        assert_eq!(owned_entries(&book.orders), vec![(110, 3)]);
+
+        assert_eq!(
+            book.apply(TriggerBookUpdate::Remove(42.into())),
+            Err(BookError::LocationError(LocationError::IdNotFound {
+                order_id: 42.into()
+            }))
+        );
     }
 }
